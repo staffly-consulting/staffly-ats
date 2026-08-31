@@ -1,102 +1,175 @@
-import Image from "next/image";
+import Link from "next/link";
 
-export default function Home() {
+import { ArrowRight, Filter, Mail, ScanLine, ShieldCheck } from "lucide-react";
+
+import { ScoreRing } from "@/components/dashboard/score-indicator";
+import { StafflyLogo } from "@/components/staffly-logo";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+
+const STEPS = [
+  {
+    icon: Mail,
+    title: "Applications arrive by email",
+    body: "Every job post gets its own inbound address. Forward your careers inbox once and applications land in Staffly automatically.",
+  },
+  {
+    icon: ScanLine,
+    title: "Resumes are read and structured",
+    body: "Contact details, education, experience and skills are extracted into fields you can filter on — no manual data entry.",
+  },
+  {
+    icon: Filter,
+    title: "Candidates are scored on your criteria",
+    body: "Define what matters per role, weight it, and get a 0–100 score with a written rationale for every single criterion.",
+  },
+];
+
+export default function LandingPage() {
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
-
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+    <div className="min-h-svh bg-background">
+      {/* TODO(marketing): this is a placeholder shell — real copy, pricing and
+          auth entry points land alongside Supabase auth. */}
+      <header className="sticky top-0 z-20 border-b border-border bg-background/80 backdrop-blur-sm">
+        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4 sm:px-6">
+          <StafflyLogo href="/" />
+          <div className="flex items-center gap-2">
+            <Button asChild variant="ghost" size="sm">
+              <Link href="/dashboard">Sign in</Link>
+            </Button>
+            <Button asChild size="sm">
+              <Link href="/dashboard">Open dashboard</Link>
+            </Button>
+          </div>
         </div>
+      </header>
+
+      <main>
+        <section className="relative overflow-hidden border-b border-border">
+          <div className="absolute inset-0 -z-10 bg-linear-to-b from-brand-subtle/70 via-background to-background" />
+          <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6 lg:py-28">
+            <div className="grid items-center gap-12 lg:grid-cols-2">
+              <div className="space-y-6">
+                <Badge
+                  variant="outline"
+                  className="h-6 border-brand/25 bg-brand/10 text-brand"
+                >
+                  AI screening for lean recruiting teams
+                </Badge>
+                <h1 className="text-4xl font-semibold tracking-tight text-balance sm:text-5xl">
+                  Read every application.
+                  <span className="text-brand"> Shortlist in minutes.</span>
+                </h1>
+                <p className="max-w-xl text-lg leading-relaxed text-pretty text-muted-foreground">
+                  Staffly ATS+ ingests applications from your inbox, extracts
+                  what matters from each resume, and scores candidates against
+                  the criteria you set — with a rationale you can defend.
+                </p>
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button asChild size="lg">
+                    <Link href="/dashboard">
+                      Explore the dashboard
+                      <ArrowRight className="size-4" />
+                    </Link>
+                  </Button>
+                  <Button asChild size="lg" variant="outline">
+                    <Link href="/dashboard/jobs/new">Create a job post</Link>
+                  </Button>
+                </div>
+                <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <ShieldCheck className="size-3.5" />
+                  Multi-tenant by design — each organisation&apos;s data stays
+                  its own.
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-border bg-card p-5 shadow-lg">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium">
+                      Senior Backend Engineer
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      10 applicants · 4 above threshold
+                    </p>
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className="border-success/25 bg-success/12 text-success"
+                  >
+                    Open
+                  </Badge>
+                </div>
+
+                <ul className="mt-5 space-y-2.5">
+                  {[
+                    {
+                      name: "Mariam Haddad",
+                      detail: "8 yrs · Lisbon",
+                      score: 92,
+                    },
+                    {
+                      name: "Sofia Lindqvist",
+                      detail: "9 yrs · Stockholm",
+                      score: 88,
+                    },
+                    {
+                      name: "Tomás Ferreira",
+                      detail: "6 yrs · São Paulo",
+                      score: 78,
+                    },
+                    {
+                      name: "Jonas Weber",
+                      detail: "4 yrs · Munich",
+                      score: 34,
+                    },
+                  ].map((candidate) => (
+                    <li
+                      key={candidate.name}
+                      className="flex items-center gap-3 rounded-lg border border-border/70 px-3 py-2"
+                    >
+                      <ScoreRing score={candidate.score} size="sm" />
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">
+                          {candidate.name}
+                        </p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {candidate.detail}
+                        </p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:py-20">
+          <div className="grid gap-6 md:grid-cols-3">
+            {STEPS.map((step) => (
+              <div
+                key={step.title}
+                className="rounded-xl border border-border bg-card p-5 shadow-xs"
+              >
+                <span className="flex size-9 items-center justify-center rounded-lg bg-brand/10 text-brand">
+                  <step.icon className="size-4.5" />
+                </span>
+                <h2 className="mt-4 text-sm font-semibold">{step.title}</h2>
+                <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+                  {step.body}
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
       </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
+
+      <footer className="border-t border-border">
+        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-3 px-4 py-8 text-xs text-muted-foreground sm:flex-row sm:px-6">
+          <StafflyLogo href={null} className="text-xs" />
+          <p>Scaffold build · not connected to a database yet.</p>
+        </div>
       </footer>
     </div>
   );
