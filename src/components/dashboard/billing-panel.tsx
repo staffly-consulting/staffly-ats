@@ -1,7 +1,7 @@
 import { Check, CreditCard, Lock, TriangleAlert } from "lucide-react";
 
+import { BillingActions } from "@/components/dashboard/billing-actions";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -17,6 +17,7 @@ import {
   FEATURE_LABELS,
   PLANS,
   hasFeature,
+  nextPoolReset,
   requiredTierFor,
   subscriptionIsActive,
   type Feature,
@@ -24,12 +25,10 @@ import {
 import { cn, formatDate } from "@/lib/utils";
 
 /**
- * Plan, usage against the annual pool, and what is locked.
+ * Plan, usage against the monthly pool, and what is locked.
  *
- * Read-only in this pass. Checkout and the Billing Portal are the two actions
- * that belong here, and both need Stripe price ids that do not exist yet — so
- * the buttons are disabled with the reason stated rather than linking somewhere
- * that would throw.
+ * Checkout and the Billing Portal live in `BillingActions` below, which gates
+ * itself on whether Stripe is fully configured rather than assuming it is.
  */
 
 function statusTone(status: string | null): {
@@ -60,7 +59,14 @@ function statusTone(status: string | null): {
   };
 }
 
-export function BillingPanel({ billing }: { billing: OrgBilling }) {
+export function BillingPanel({
+  billing,
+  stripeConfigured,
+}: {
+  billing: OrgBilling;
+  /** Resolved on the server — `isStripeConfigured()` cannot run in the browser. */
+  stripeConfigured: boolean;
+}) {
   const plan = PLANS[billing.planTier];
   const { quota } = billing;
   const status = statusTone(billing.stripeSubscriptionStatus);
@@ -76,7 +82,7 @@ export function BillingPanel({ billing }: { billing: OrgBilling }) {
           Plan and usage
         </CardTitle>
         <CardDescription>
-          Applications pool annually, regardless of whether you are billed
+          Applications pool monthly, regardless of whether you are billed
           monthly or yearly.
         </CardDescription>
       </CardHeader>
@@ -96,6 +102,31 @@ export function BillingPanel({ billing }: { billing: OrgBilling }) {
           </Badge>
         </div>
 
+        {/* The same date means opposite things depending on whether the
+            customer has cancelled, so the label carries the meaning. */}
+        {billing.currentPeriodEnd ? (
+          <p className="-mt-3 text-xs text-muted-foreground">
+            {billing.cancelAtPeriodEnd ? (
+              <>
+                Cancelled — access ends{" "}
+                <span className="font-medium text-foreground">
+                  {formatDate(billing.currentPeriodEnd)}
+                </span>
+              </>
+            ) : (
+              <>
+                Renews{" "}
+                <span className="font-medium text-foreground">
+                  {formatDate(billing.currentPeriodEnd)}
+                </span>
+                {billing.billingInterval === "ANNUAL"
+                  ? " · overage is billed monthly"
+                  : null}
+              </>
+            )}
+          </p>
+        ) : null}
+
         {!active ? (
           <div className="flex items-start gap-2 rounded-md border border-danger/25 bg-danger/10 px-3 py-2 text-xs leading-relaxed text-danger">
             <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
@@ -110,7 +141,7 @@ export function BillingPanel({ billing }: { billing: OrgBilling }) {
         <div className="space-y-2">
           <div className="flex items-baseline justify-between gap-2 text-sm">
             <span className="text-muted-foreground">
-              Applications this year
+              Applications this month
             </span>
             <span className="tabular-nums">
               <span className="font-medium">{quota.used.toLocaleString()}</span>
@@ -151,11 +182,13 @@ export function BillingPanel({ billing }: { billing: OrgBilling }) {
 
           {billing.poolCycleAnchor ? (
             <p className="text-xs text-muted-foreground">
-              Pool resets {formatDate(nextAnniversary(billing.poolCycleAnchor))}
+              Pool resets {formatDate(
+                nextPoolReset(new Date(billing.poolCycleAnchor)).toISOString(),
+              )}
             </p>
           ) : (
             <p className="text-xs text-muted-foreground">
-              The pool year starts when a subscription begins.
+              The pool month starts when a subscription begins.
             </p>
           )}
         </div>
@@ -197,32 +230,14 @@ export function BillingPanel({ billing }: { billing: OrgBilling }) {
 
         <Separator />
 
-        <div className="flex flex-wrap items-center gap-2">
-          {/* TODO(billing): enable once the Stripe prices exist. Checkout and
-              Billing Portal are sections 2 and 4 of the billing spec, both
-              blocked on price ids rather than on code. */}
-          <Button disabled>Change plan</Button>
-          <Button variant="outline" disabled>
-            Manage billing
-          </Button>
-          <p className="text-xs text-muted-foreground">
-            Checkout is not connected yet — Stripe is not configured.
-          </p>
-        </div>
+        <BillingActions
+          currentTier={billing.planTier}
+          hasSubscription={billing.stripeSubscriptionId !== null}
+          configured={stripeConfigured}
+          cancelAtPeriodEnd={billing.cancelAtPeriodEnd}
+          currentPeriodEnd={billing.currentPeriodEnd}
+        />
       </CardContent>
     </Card>
   );
-}
-
-/** The pool anniversary that comes next, given the anchor. */
-function nextAnniversary(anchorIso: string): string {
-  const anchor = new Date(anchorIso);
-  const next = new Date(anchor);
-  next.setUTCFullYear(next.getUTCFullYear() + 1);
-
-  const now = new Date();
-  while (next <= now) {
-    next.setUTCFullYear(next.getUTCFullYear() + 1);
-  }
-  return next.toISOString();
 }

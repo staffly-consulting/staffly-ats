@@ -6,12 +6,26 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
- * Fixed locale and UTC so the server and client render identical strings —
- * otherwise dates in server components hydrate mismatched.
+ * Dates are always formatted in UTC.
+ *
+ * Everything in the database is stored in UTC and the pool-reset cron compares
+ * in UTC, so formatting in the viewer's zone would show two colleagues different
+ * dates for the same candidate — and show a reset date that disagrees with the
+ * job that performs it.
+ *
+ * The locale is passed in rather than read from a hook, because these are called
+ * from server and client components alike. Both sides get it from next-intl's
+ * provider, so server and client render identical strings and hydration matches.
+ * The default keeps every existing call site correct.
  */
-export function formatDate(iso: string | null | undefined): string {
+export const DEFAULT_LOCALE = "en-GB";
+
+export function formatDate(
+  iso: string | null | undefined,
+  locale: string = DEFAULT_LOCALE,
+): string {
   if (!iso) return "—";
-  return new Intl.DateTimeFormat("en-GB", {
+  return new Intl.DateTimeFormat(locale, {
     day: "numeric",
     month: "short",
     year: "numeric",
@@ -19,9 +33,12 @@ export function formatDate(iso: string | null | undefined): string {
   }).format(new Date(iso));
 }
 
-export function formatDateTime(iso: string | null | undefined): string {
+export function formatDateTime(
+  iso: string | null | undefined,
+  locale: string = DEFAULT_LOCALE,
+): string {
   if (!iso) return "—";
-  return new Intl.DateTimeFormat("en-GB", {
+  return new Intl.DateTimeFormat(locale, {
     day: "numeric",
     month: "short",
     year: "numeric",

@@ -1,11 +1,16 @@
 import type { Metadata } from "next";
 
+import { getTranslations } from "next-intl/server";
+
 import { EmailConnection } from "@/components/dashboard/email-connection";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { requireOrgContext } from "@/lib/auth";
 import { getEmailInbox } from "@/lib/email-inbox";
 
-export const metadata: Metadata = { title: "Email connection" };
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("meta");
+  return { title: t("emailConnection") };
+}
 
 export const dynamic = "force-dynamic";
 

@@ -22,7 +22,8 @@
     "test:scoring": "tsx scripts/scoring.test.ts",
     "test:billing": "tsx scripts/billing.test.ts",
     "seed:internal": "tsx scripts/seed-internal-org.ts",
-    "email:realias": "tsx scripts/realias-inboxes.ts"
+    "email:realias": "tsx scripts/realias-inboxes.ts",
+    "test:i18n": "tsx scripts/i18n.test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",
@@ -39,6 +40,7 @@
     "lucide-react": "^1.33.0",
     "mammoth": "^1.12.1",
     "next": "15.5.23",
+    "next-intl": "^4.14.2",
     "next-themes": "^0.4.6",
     "pg": "^8.23.0",
     "radix-ui": "^1.6.7",

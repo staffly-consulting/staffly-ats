@@ -26,9 +26,20 @@ model Organization {
   stripeSubscriptionStatus String?
   planTier                 PlanTier         @default(SHORTLIST)
   billingInterval          BillingInterval?
-  /// Start of the current ANNUAL application pool. Advances by exactly one year
-  /// at a time, independently of the billing cadence — a monthly-billed org
-  /// invoices twelve times per pool cycle.
+  /// End of the current paid period — when the FLAT plan item next renews, so a
+  /// yearly plan shows a yearly date even though its metered item closes
+  /// monthly. Mirrored from Stripe for display only; entitlement still comes
+  /// from stripeSubscriptionStatus, which Stripe updates itself.
+  currentPeriodEnd         DateTime?
+  /// True when the customer has cancelled but is still inside a paid period.
+  /// Changes the UI from "renews on" to "access ends on" — the same date means
+  /// opposite things to a customer.
+  cancelAtPeriodEnd        Boolean          @default(false)
+  /// Start of the current MONTHLY application pool, and the org's own reset
+  /// day — not the 1st of the calendar month. Advances by exactly one month at
+  /// a time, independently of billing cadence: an annually-billed org invoices
+  /// once per twelve pool cycles. This is NOT a subscription expiry date; access
+  /// is gated on stripeSubscriptionStatus.
   poolCycleAnchor          DateTime?
   applicationsUsedInCycle  Int              @default(0)
 

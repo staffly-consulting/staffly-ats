@@ -10,21 +10,22 @@ import {
 
 export interface NavItem {
   href: string;
-  label: string;
+  /** Key into the `nav` namespace, not display text — resolved in SidebarNav. */
+  labelKey: string;
   icon: LucideIcon;
   /** Sections that exist as navigation but have no page behind them yet. */
   comingSoon?: boolean;
 }
 
 export const NAV_ITEMS: NavItem[] = [
-  { href: "/dashboard", label: "Job Posts", icon: Briefcase },
-  { href: "/dashboard/inbox", label: "Inbox", icon: Inbox },
-  { href: "/dashboard/issues", label: "Issues", icon: TriangleAlert },
+  { href: "/dashboard", labelKey: "jobPosts", icon: Briefcase },
+  { href: "/dashboard/inbox", labelKey: "inbox", icon: Inbox },
+  { href: "/dashboard/issues", labelKey: "issues", icon: TriangleAlert },
   {
     href: "/dashboard/settings/email",
-    label: "Email Connection",
+    labelKey: "emailConnection",
     icon: Mail,
   },
-  { href: "/dashboard/team", label: "Team", icon: Users },
-  { href: "/dashboard/settings", label: "Settings", icon: Settings },
+  { href: "/dashboard/team", labelKey: "team", icon: Users },
+  { href: "/dashboard/settings", labelKey: "settings", icon: Settings },
 ];

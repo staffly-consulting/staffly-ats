@@ -20,9 +20,9 @@ export interface PlanDefinition {
   monthlyPrice: number;
   /** USD per year on the annual interval (~17% off). Display only. */
   annualPrice: number;
-  /** Applications included per POOL YEAR — not per invoice. See poolCycleAnchor. */
+  /** Applications included per POOL MONTH — not per invoice. See poolCycleAnchor. */
   includedApplications: number;
-  /** USD per application beyond the included pool. Display only. */
+  /** USD per application beyond the included monthly pool. Display only. */
   overagePerApplication: number;
   /** null = unlimited. */
   jobPostLimit: number | null;
@@ -37,7 +37,7 @@ export const PLANS: Record<PlanTier, PlanDefinition> = {
     label: "Shortlist",
     monthlyPrice: 79,
     annualPrice: 787,
-    includedApplications: 1_800,
+    includedApplications: 150,
     overagePerApplication: 0.7,
     jobPostLimit: 3,
     inboxLimit: 1,
@@ -48,7 +48,7 @@ export const PLANS: Record<PlanTier, PlanDefinition> = {
     label: "Pipeline",
     monthlyPrice: 250,
     annualPrice: 2_490,
-    includedApplications: 10_800,
+    includedApplications: 900,
     overagePerApplication: 0.5,
     jobPostLimit: 15,
     inboxLimit: 2,
@@ -59,7 +59,7 @@ export const PLANS: Record<PlanTier, PlanDefinition> = {
     label: "Talent Pool",
     monthlyPrice: 499,
     annualPrice: 4_970,
-    includedApplications: 30_000,
+    includedApplications: 2_500,
     overagePerApplication: 0.35,
     jobPostLimit: null,
     inboxLimit: 5,
@@ -214,6 +214,54 @@ export function isOverageAt(
   countAfterIncrement: number,
 ): boolean {
   return countAfterIncrement > includedApplications(tier);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Pool cycle arithmetic                                                       */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * One month on from `date`, clamped to the end of shorter months.
+ *
+ * Lives here, in the one module both the server cron and the client billing
+ * panel already import, because the two must agree exactly. If the cron rolls
+ * an org over on the 28th while the panel promises the 3rd, the customer sees a
+ * date that never arrives.
+ *
+ * Naive `setUTCMonth(+1)` overflows: 31 January becomes 3 March, which skips
+ * February entirely and then permanently shifts the anchor to the 3rd. Anchors
+ * on the 29th-31st are roughly a tenth of sign-ups, so this is routine.
+ */
+export function addOneMonth(date: Date): Date {
+  const day = date.getUTCDate();
+  const next = new Date(date);
+
+  // Move to the 1st before shifting the month, so the shift cannot overflow.
+  next.setUTCDate(1);
+  next.setUTCMonth(next.getUTCMonth() + 1);
+
+  // Then restore the day, clamped to what the target month actually has.
+  const daysInTargetMonth = new Date(
+    Date.UTC(next.getUTCFullYear(), next.getUTCMonth() + 1, 0),
+  ).getUTCDate();
+  next.setUTCDate(Math.min(day, daysInTargetMonth));
+
+  return next;
+}
+
+/**
+ * The next reset date at or after `now`, given the org's anchor.
+ *
+ * Walks forward a month at a time rather than computing a difference, so an
+ * anchor several cycles stale (dormant account, cron outage) lands on a real
+ * anniversary of the anchor instead of a month after today.
+ */
+export function nextPoolReset(anchor: Date, now: Date = new Date()): Date {
+  let next = addOneMonth(anchor);
+  while (next <= now) {
+    next = addOneMonth(next);
+  }
+  return next;
 }
 
 /* -------------------------------------------------------------------------- */

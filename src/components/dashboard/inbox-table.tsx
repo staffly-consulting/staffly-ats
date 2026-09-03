@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 
 import { FileText, Inbox, Mail } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 
 import {
@@ -41,6 +42,7 @@ export function InboxTable({
   jobPosts: { id: string; title: string }[];
 }) {
   const [pending, startTransition] = useTransition();
+  const t = useTranslations("inbox");
   const [assigningId, setAssigningId] = useState<string | null>(null);
 
   function assign(candidateId: string, jobPostId: string) {
@@ -50,11 +52,13 @@ export function InboxTable({
       setAssigningId(null);
 
       if (!result.ok) {
-        toast.error("Could not assign", { description: result.error });
+        toast.error(t("assignFailed"), { description: result.error });
         return;
       }
       const post = jobPosts.find((job) => job.id === jobPostId);
-      toast.success(`Assigned to ${post?.title ?? "job post"}`);
+      toast.success(
+        t("assigned", { title: post?.title ?? t("jobPostFallback") }),
+      );
     });
   }
 
@@ -62,7 +66,7 @@ export function InboxTable({
     startTransition(async () => {
       const result = await getResumeUrlAction(candidateId);
       if (!result.ok) {
-        toast.error("Could not open resume", { description: result.error });
+        toast.error(t("openResumeFailed"), { description: result.error });
         return;
       }
       window.open(result.data, "_blank", "noopener,noreferrer");
@@ -74,10 +78,9 @@ export function InboxTable({
       <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border py-16 text-center">
         <Inbox className="size-8 text-muted-foreground/60" />
         <div>
-          <p className="text-sm font-medium">No unassigned resumes</p>
+          <p className="text-sm font-medium">{t("emptyTitle")}</p>
           <p className="text-sm text-muted-foreground">
-            Resumes forwarded to your alias land here before they are routed to
-            a role.
+            {t("emptyDescription")}
           </p>
         </div>
       </div>
@@ -90,11 +93,11 @@ export function InboxTable({
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
-              <TableHead className="min-w-55">Sender</TableHead>
-              <TableHead className="min-w-45">Resume</TableHead>
-              <TableHead>Received</TableHead>
+              <TableHead className="min-w-55">{t("columnSender")}</TableHead>
+              <TableHead className="min-w-45">{t("columnResume")}</TableHead>
+              <TableHead>{t("columnReceived")}</TableHead>
               <TableHead className="min-w-55 text-right">
-                Assign to job post
+                {t("columnAssign")}
               </TableHead>
             </TableRow>
           </TableHeader>
@@ -103,11 +106,11 @@ export function InboxTable({
               <TableRow key={candidate.id} className="hover:bg-transparent">
                 <TableCell>
                   <div className="font-medium">
-                    {candidate.name ?? "Unknown sender"}
+                    {candidate.name ?? t("unknownSender")}
                   </div>
                   <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                     <Mail className="size-3" />
-                    {candidate.email ?? "no address"}
+                    {candidate.email ?? t("noAddress")}
                   </div>
                 </TableCell>
 
@@ -140,7 +143,9 @@ export function InboxTable({
                     >
                       <SelectTrigger
                         className="ml-auto w-56"
-                        aria-label={`Assign ${candidate.name ?? "candidate"} to a job post`}
+                        aria-label={t("assignAria", {
+                          name: candidate.name ?? t("candidateFallback"),
+                        })}
                       >
                         <SelectValue placeholder="Choose a role…" />
                       </SelectTrigger>

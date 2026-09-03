@@ -11,6 +11,7 @@ import {
   PLANS,
   PLAN_ORDER,
   SELF_SERVE_TIERS,
+  addOneMonth,
   annualSavingPercent,
   hasFeature,
   includedApplications,
@@ -41,19 +42,19 @@ console.log("\n--- the locked pricing table ---");
 check(
   "Shortlist: $79 / 1,800 / $0.70",
   PLANS.SHORTLIST.monthlyPrice === 79 &&
-    PLANS.SHORTLIST.includedApplications === 1800 &&
+    PLANS.SHORTLIST.includedApplications === 150 &&
     PLANS.SHORTLIST.overagePerApplication === 0.7,
 );
 check(
   "Pipeline: $250 / 10,800 / $0.50",
   PLANS.PIPELINE.monthlyPrice === 250 &&
-    PLANS.PIPELINE.includedApplications === 10800 &&
+    PLANS.PIPELINE.includedApplications === 900 &&
     PLANS.PIPELINE.overagePerApplication === 0.5,
 );
 check(
   "Talent Pool: $499 / 30,000 / $0.35",
   PLANS.TALENT_POOL.monthlyPrice === 499 &&
-    PLANS.TALENT_POOL.includedApplications === 30000 &&
+    PLANS.TALENT_POOL.includedApplications === 2500 &&
     PLANS.TALENT_POOL.overagePerApplication === 0.35,
 );
 check(
@@ -178,19 +179,19 @@ console.log("\n--- quota arithmetic ---");
 {
   const within = quotaSnapshot({
     ...org("SHORTLIST"),
-    applicationsUsedInCycle: 1799,
+    applicationsUsedInCycle: 149,
   });
   check(
-    "1,799 of 1,800 is not over quota",
+    "149 of 150 is not over quota",
     !within.isOverQuota && within.overage === 0,
   );
 
   const exact = quotaSnapshot({
     ...org("SHORTLIST"),
-    applicationsUsedInCycle: 1800,
+    applicationsUsedInCycle: 150,
   });
   check(
-    "exactly 1,800 is NOT over quota (inclusive)",
+    "exactly 150 is NOT over quota (inclusive)",
     !exact.isOverQuota,
     exact,
   );
@@ -198,9 +199,9 @@ console.log("\n--- quota arithmetic ---");
 
   const over = quotaSnapshot({
     ...org("SHORTLIST"),
-    applicationsUsedInCycle: 1900,
+    applicationsUsedInCycle: 250,
   });
-  check("1,900 is 100 over", over.overage === 100);
+  check("250 is 100 over the 150 pool", over.overage === 100);
   check(
     "100 × $0.70 = $70.00",
     over.overageCostUsd === 70,
@@ -210,7 +211,7 @@ console.log("\n--- quota arithmetic ---");
 
   const pipeline = quotaSnapshot({
     ...org("PIPELINE"),
-    applicationsUsedInCycle: 11_000,
+    applicationsUsedInCycle: 1_100,
   });
   check(
     "Pipeline: 200 over × $0.50 = $100.00",
@@ -220,7 +221,7 @@ console.log("\n--- quota arithmetic ---");
 
   const talent = quotaSnapshot({
     ...org("TALENT_POOL"),
-    applicationsUsedInCycle: 30_010,
+    applicationsUsedInCycle: 2_510,
   });
   check(
     "Talent Pool: 10 over × $0.35 = $3.50",
@@ -245,93 +246,135 @@ console.log("\n--- quota arithmetic ---");
 }
 
 console.log("\n--- the overage boundary at ingestion ---");
-check("application 1,800 is included", !isOverageAt("SHORTLIST", 1800));
+check("application 150 is included", !isOverageAt("SHORTLIST", 150));
 check(
-  "application 1,801 is the FIRST billed one",
-  isOverageAt("SHORTLIST", 1801),
+  "application 151 is the FIRST billed one",
+  isOverageAt("SHORTLIST", 151),
 );
 check(
-  "Pipeline boundary at 10,801",
-  !isOverageAt("PIPELINE", 10800) && isOverageAt("PIPELINE", 10801),
+  "Pipeline boundary at 901",
+  !isOverageAt("PIPELINE", 900) && isOverageAt("PIPELINE", 901),
 );
 check(
-  "Talent Pool boundary at 30,001",
-  !isOverageAt("TALENT_POOL", 30000) && isOverageAt("TALENT_POOL", 30001),
+  "Talent Pool boundary at 2,501",
+  !isOverageAt("TALENT_POOL", 2500) && isOverageAt("TALENT_POOL", 2501),
 );
 check("Enterprise never bills overage", !isOverageAt("ENTERPRISE", 5_000_000));
 check(
   "included quota lookup matches the table",
-  includedApplications("PIPELINE") === 10800,
+  includedApplications("PIPELINE") === 900,
 );
 
-console.log("\n--- annual anchor advance (no drift) ---");
+console.log("\n--- monthly anchor advance (no drift, month-length safe) ---");
 {
-  // Mirrors the loop in reset-usage-pools.ts.
-  const addOneYear = (d: Date) => {
-    const n = new Date(d);
-    n.setUTCFullYear(n.getUTCFullYear() + 1);
-    return n;
-  };
+  // Uses the SHARED helper the cron and the billing panel both call, so this
+  // suite fails if the two ever diverge.
   const advance = (anchorIso: string, nowIso: string) => {
     let anchor = new Date(anchorIso);
     const now = new Date(nowIso);
     let cycles = 0;
-    while (addOneYear(anchor) <= now) {
-      anchor = addOneYear(anchor);
+    while (addOneMonth(anchor) <= now) {
+      anchor = addOneMonth(anchor);
       cycles += 1;
     }
     return { anchor: anchor.toISOString(), cycles };
   };
 
-  const oneYear = advance(
-    "2025-03-15T09:00:00.000Z",
-    "2026-03-16T03:00:00.000Z",
+  const oneMonth = advance(
+    "2026-03-15T09:00:00.000Z",
+    "2026-04-16T03:00:00.000Z",
   );
   check(
-    "advances exactly one year",
-    oneYear.anchor === "2026-03-15T09:00:00.000Z",
-    oneYear,
+    "advances exactly one month",
+    oneMonth.anchor === "2026-04-15T09:00:00.000Z",
+    oneMonth,
   );
-  check("one cycle", oneYear.cycles === 1);
+  check("one cycle", oneMonth.cycles === 1);
 
   // The drift test: the job runs late, at 03:00 rather than 09:00. Advancing
-  // from `now` would move the anniversary six hours earlier, every year.
+  // from `now` would move the reset six hours earlier, every month.
   check(
     "anchor keeps its original time-of-day even when the job runs late",
-    oneYear.anchor.endsWith("T09:00:00.000Z"),
-    oneYear.anchor,
+    oneMonth.anchor.endsWith("T09:00:00.000Z"),
+    oneMonth.anchor,
   );
 
-  const late = advance("2020-06-01T00:00:00.000Z", "2026-08-26T03:00:00.000Z");
-  check("a 6-year-stale anchor catches up in one run", late.cycles === 6, late);
+  const stale = advance("2025-06-01T00:00:00.000Z", "2026-08-26T03:00:00.000Z");
+  check("a 14-month-stale anchor catches up in one run", stale.cycles === 14, stale);
   check(
-    "...landing on the correct anniversary",
-    late.anchor === "2026-06-01T00:00:00.000Z",
-    late.anchor,
+    "...landing on a real anniversary of the anchor",
+    stale.anchor === "2026-08-01T00:00:00.000Z",
+    stale.anchor,
   );
 
   const notDue = advance(
-    "2026-06-01T00:00:00.000Z",
+    "2026-08-01T00:00:00.000Z",
     "2026-08-26T03:00:00.000Z",
   );
-  check("an anchor under a year old does not advance", notDue.cycles === 0);
+  check("an anchor under a month old does not advance", notDue.cycles === 0);
 
-  const exactlyOneYear = advance(
-    "2025-08-26T03:00:00.000Z",
+  const exact = advance(
+    "2026-07-26T03:00:00.000Z",
     "2026-08-26T03:00:00.000Z",
   );
+  check("exactly one month to the second does advance", exact.cycles === 1);
+
+  // Month-length clamping. Naive setUTCMonth(+1) turns 31 Jan into 3 Mar,
+  // skipping February and permanently moving the anchor to the 3rd.
+  const jan31 = advance("2026-01-31T00:00:00.000Z", "2026-02-28T12:00:00.000Z");
   check(
-    "exactly one year to the second does advance",
-    exactlyOneYear.cycles === 1,
+    "31 Jan clamps to 28 Feb, NOT 3 Mar",
+    jan31.anchor === "2026-02-28T00:00:00.000Z",
+    jan31.anchor,
   );
 
-  // Feb 29 → JS clamps to Mar 1 in a non-leap year. Documented, not a bug, but
-  // worth knowing: a Feb 29 anchor drifts to Mar 1 permanently.
-  const leap = advance("2024-02-29T00:00:00.000Z", "2025-03-02T00:00:00.000Z");
+  // KNOWN TRADEOFF, asserted so it cannot change silently: the clamp is
+  // permanent. Once 31 Jan becomes 28 Feb, the anchor stays on the 28th — the
+  // original day-of-month is not recoverable from the stored value.
+  //
+  // Accepted rather than fixed because it costs no revenue: the org still gets
+  // twelve resets a year, and the shift is at most three days, once. Preserving
+  // the original day the way Stripe does would need the signup day-of-month
+  // kept in its own column.
+  const jan31ToMar = advance(
+    "2026-01-31T00:00:00.000Z",
+    "2026-03-31T12:00:00.000Z",
+  );
   check(
-    "Feb 29 anchor rolls to Mar 1 in a non-leap year (known, documented)",
-    leap.anchor.startsWith("2025-03-01"),
+    "clamp is PERMANENT: 31 Jan stays on the 28th, it does not spring back",
+    jan31ToMar.anchor === "2026-03-28T00:00:00.000Z",
+    jan31ToMar.anchor,
+  );
+
+  const jan30 = advance("2026-01-30T00:00:00.000Z", "2026-02-28T12:00:00.000Z");
+  check(
+    "30 Jan clamps to 28 Feb in a non-leap year",
+    jan30.anchor === "2026-02-28T00:00:00.000Z",
+    jan30.anchor,
+  );
+
+  // Leap year: February has 29 days, so a 31 Jan anchor clamps to the 29th.
+  const leap = advance("2028-01-31T00:00:00.000Z", "2028-02-29T12:00:00.000Z");
+  check(
+    "31 Jan clamps to 29 Feb in a LEAP year",
+    leap.anchor === "2028-02-29T00:00:00.000Z",
     leap.anchor,
+  );
+
+  // Year boundary.
+  const dec = advance("2026-12-15T00:00:00.000Z", "2027-01-16T00:00:00.000Z");
+  check(
+    "crosses the year boundary correctly",
+    dec.anchor === "2027-01-15T00:00:00.000Z",
+    dec.anchor,
+  );
+
+  // The anti-abuse property this whole change exists for: one paid month can
+  // never yield more than one month of allowance.
+  const monthsIn = 1;
+  check(
+    "one paid month grants 150 Shortlist applications, not 1,800",
+    PLANS.SHORTLIST.includedApplications * monthsIn === 150,
   );
 }
 

@@ -1,10 +1,15 @@
 import type { Metadata } from "next";
 
+import { getTranslations } from "next-intl/server";
+
 import { OrganizationList } from "@clerk/nextjs";
 
 import { PageHeader } from "@/components/dashboard/page-header";
 
-export const metadata: Metadata = { title: "Choose an organization" };
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("meta");
+  return { title: t("selectOrg") };
+}
 
 export const dynamic = "force-dynamic";
 

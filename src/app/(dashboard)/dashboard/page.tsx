@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+
+import { getTranslations } from "next-intl/server";
 import Link from "next/link";
 
 import type { JobPostStatus } from "@prisma/client";
@@ -13,37 +15,43 @@ import { requireOrgContext } from "@/lib/auth";
 import { listJobPosts, type JobPostSummary } from "@/lib/job-posts";
 import { prisma } from "@/lib/prisma";
 import { SCORE_THRESHOLDS } from "@/lib/score";
-import { pluralize } from "@/lib/utils";
 
-export const metadata: Metadata = { title: "Job Posts" };
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("meta");
+  return { title: t("jobPosts") };
+}
 
 // Org-scoped and session-dependent: never statically rendered or cached.
 export const dynamic = "force-dynamic";
 
-const TABS: { value: string; label: string; match?: JobPostStatus[] }[] = [
-  { value: "all", label: "All" },
-  { value: "open", label: "Open", match: ["OPEN"] },
-  { value: "draft", label: "Drafts", match: ["DRAFT"] },
+/** `labelKey` indexes the `dashboard` namespace; the label itself is resolved
+ * at render so a translator never edits this list. */
+const TABS: { value: string; labelKey: string; match?: JobPostStatus[] }[] = [
+  { value: "all", labelKey: "tabAll" },
+  { value: "open", labelKey: "tabOpen", match: ["OPEN"] },
+  { value: "draft", labelKey: "tabDraft", match: ["DRAFT"] },
   {
     value: "archived",
-    label: "Closed & archived",
+    labelKey: "tabArchived",
     match: ["CLOSED", "ARCHIVED"],
   },
 ];
 
-function JobGrid({ jobs }: { jobs: JobPostSummary[] }) {
+async function JobGrid({ jobs }: { jobs: JobPostSummary[] }) {
+  const t = await getTranslations("dashboard");
+
   if (jobs.length === 0) {
     return (
       <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border py-16 text-center">
         <Inbox className="size-8 text-muted-foreground/60" />
         <div>
-          <p className="text-sm font-medium">Nothing here yet</p>
+          <p className="text-sm font-medium">{t("emptyTitle")}</p>
           <p className="text-sm text-muted-foreground">
-            Job posts you create will show up in this view.
+            {t("emptyDescription")}
           </p>
         </div>
         <Button asChild size="sm" variant="outline">
-          <Link href="/dashboard/jobs/new">New job post</Link>
+          <Link href="/dashboard/jobs/new">{t("newJobPost")}</Link>
         </Button>
       </div>
     );
@@ -60,6 +68,7 @@ function JobGrid({ jobs }: { jobs: JobPostSummary[] }) {
 
 export default async function DashboardPage() {
   const { orgId } = await requireOrgContext();
+  const t = await getTranslations("dashboard");
 
   const [organization, jobs] = await Promise.all([
     prisma.organization.findUnique({
@@ -98,13 +107,13 @@ export default async function DashboardPage() {
         // The org row is created by the Clerk webhook; if it has not landed yet
         // the header just omits the name rather than rendering "undefined".
         eyebrow={organization?.name ?? undefined}
-        title="Job Posts"
-        description="Every open role and the candidates screened against it. Scores are produced from the criteria you define on each post."
+        title={t("title")}
+        description={t("description")}
         actions={
           <Button asChild>
             <Link href="/dashboard/jobs/new">
               <Plus className="size-4" />
-              New job post
+              {t("newJobPost")}
             </Link>
           </Button>
         }
@@ -112,32 +121,32 @@ export default async function DashboardPage() {
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile
-          label="Open roles"
+          label={t("statOpenRoles")}
           value={openJobs.length}
-          hint={`${jobs.length} ${pluralize(jobs.length, "post")} in total`}
+          hint={t("statPostsTotal", { count: jobs.length })}
           icon={Briefcase}
         />
         <StatTile
-          label="Applicants"
+          label={t("statApplicants")}
           value={totalApplicants}
           hint={
             pendingScores > 0
-              ? `${pendingScores} awaiting a score`
-              : "All applications scored"
+              ? t("statAwaitingScore", { count: pendingScores })
+              : t("statAllScored")
           }
           icon={Inbox}
         />
         <StatTile
-          label="Above threshold"
+          label={t("statAboveThreshold")}
           value={totalShortlisted}
-          hint={`Scoring ${SCORE_THRESHOLDS.strong} or higher`}
+          hint={t("statScoringOrHigher", { threshold: SCORE_THRESHOLDS.strong })}
           icon={Target}
           valueClassName="text-success"
         />
         <StatTile
-          label="Average score"
+          label={t("statAverageScore")}
           value={portfolioAverage ?? "—"}
-          hint="Across all scored applications"
+          hint={t("statAcrossScored")}
           icon={TrendingUp}
         />
       </div>
@@ -146,7 +155,7 @@ export default async function DashboardPage() {
         <TabsList>
           {TABS.map((tab) => (
             <TabsTrigger key={tab.value} value={tab.value}>
-              {tab.label}
+              {t(tab.labelKey)}
             </TabsTrigger>
           ))}
         </TabsList>

@@ -1,5 +1,7 @@
 import "server-only";
 
+import { auth } from "@clerk/nextjs/server";
+
 import type { Language } from "@prisma/client";
 
 import { DEFAULT_LANGUAGE } from "@/lib/languages";
@@ -35,6 +37,30 @@ export async function getUserPreferences(
   });
 
   return { preferredLanguage: row?.preferredLanguage ?? DEFAULT_LANGUAGE };
+}
+
+/**
+ * The language for the current request, for `i18n/request.ts`.
+ *
+ * Never throws and never redirects. It runs on EVERY server render, including
+ * the marketing page and the sign-in screen where there is no session at all, so
+ * "no user" is an ordinary outcome rather than an error. A database blip
+ * likewise degrades to English instead of blanking the page.
+ */
+export async function resolveRequestLanguage(): Promise<Language> {
+  try {
+    const { userId } = await auth();
+    if (!userId) return DEFAULT_LANGUAGE;
+
+    const row = await prisma.userPreference.findUnique({
+      where: { clerkUserId: userId },
+      select: { preferredLanguage: true },
+    });
+
+    return row?.preferredLanguage ?? DEFAULT_LANGUAGE;
+  } catch {
+    return DEFAULT_LANGUAGE;
+  }
 }
 
 /**

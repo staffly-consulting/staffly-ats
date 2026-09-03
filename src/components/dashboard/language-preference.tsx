@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 
 import { Languages } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 
 import { updatePreferredLanguageAction } from "@/app/(dashboard)/dashboard/profile/actions";
@@ -28,7 +30,8 @@ import type { Language } from "@prisma/client";
  * Interface language for this account.
  *
  * Saves on change rather than behind a Save button — a single dropdown with
- * nothing else to confirm reads as a setting, not a form.
+ * nothing else to confirm reads as a setting, not a form. The page is then
+ * refreshed so the new language takes effect immediately.
  *
  * The optimistic value is rolled back if the action fails, so what is on screen
  * always matches what is in the database.
@@ -38,6 +41,8 @@ export function LanguagePreference({
 }: {
   initialLanguage: Language;
 }) {
+  const t = useTranslations("language");
+  const router = useRouter();
   const [language, setLanguage] = useState<Language>(initialLanguage);
   const [pending, startTransition] = useTransition();
 
@@ -51,7 +56,12 @@ export function LanguagePreference({
     startTransition(async () => {
       const result = await updatePreferredLanguageAction(value);
       if (result.ok) {
-        toast.success(`Language set to ${languageLabel(value)}.`);
+        toast.success(t("saved", { language: languageLabel(value) }));
+        // The messages for the whole app are resolved on the SERVER, per
+        // request, from this preference. Without a refresh the page keeps the
+        // bundle it was rendered with and nothing visibly changes — which is
+        // exactly what "I picked Thai and nothing happened" looks like.
+        router.refresh();
       } else {
         setLanguage(previous);
         toast.error(result.error);
@@ -64,16 +74,13 @@ export function LanguagePreference({
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <Languages className="size-4 text-muted-foreground" />
-          Language
+          {t("title")}
         </CardTitle>
-        <CardDescription>
-          Your preferred language. This applies to your account across every
-          organization you belong to.
-        </CardDescription>
+        <CardDescription>{t("description")}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="space-y-1.5">
-          <Label htmlFor="preferred-language">Preferred language</Label>
+          <Label htmlFor="preferred-language">{t("label")}</Label>
           <Select
             value={language}
             onValueChange={handleChange}
@@ -92,14 +99,6 @@ export function LanguagePreference({
           </Select>
         </div>
 
-        {/* Said plainly rather than left for the user to discover: the
-            preference is stored, but no screen reads from it yet. */}
-        <p className="rounded-lg border border-border bg-muted/40 p-3 text-xs leading-relaxed text-muted-foreground">
-          Your choice is saved, but the interface is{" "}
-          <strong className="font-medium">still English everywhere</strong> —
-          nothing is translated yet. Setting it now means the app will already
-          know your language when translations ship.
-        </p>
       </CardContent>
     </Card>
   );

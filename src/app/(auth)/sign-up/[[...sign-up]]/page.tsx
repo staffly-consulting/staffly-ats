@@ -1,8 +1,13 @@
 import type { Metadata } from "next";
 
+import { getTranslations } from "next-intl/server";
+
 import { SignUp } from "@clerk/nextjs";
 
-export const metadata: Metadata = { title: "Sign up" };
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("meta");
+  return { title: t("signUp") };
+}
 
 export default function SignUpPage() {
   return <SignUp />;

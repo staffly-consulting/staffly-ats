@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+
+import { getTranslations } from "next-intl/server";
 import Link from "next/link";
 
 import { FlaskConical, Mail } from "lucide-react";
@@ -12,7 +14,10 @@ import { getEmailInbox } from "@/lib/email-inbox";
 import { listJobPosts } from "@/lib/job-posts";
 import { pluralize } from "@/lib/utils";
 
-export const metadata: Metadata = { title: "Inbox" };
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("meta");
+  return { title: t("inbox") };
+}
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +30,7 @@ export const dynamic = "force-dynamic";
  */
 export default async function InboxPage() {
   const { orgId } = await requireOrgContext();
+  const t = await getTranslations("inbox");
 
   const [candidates, jobPosts, inbox] = await Promise.all([
     listInboxCandidates(orgId),
@@ -39,8 +45,8 @@ export default async function InboxPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Inbox"
-        description="Resumes forwarded to your alias that have not been routed to a role yet. Assign one to a job post to move it into that pipeline."
+        title={t("title")}
+        description={t("description")}
         actions={
           <Button asChild variant="outline">
             <Link href="/dashboard/settings/email">

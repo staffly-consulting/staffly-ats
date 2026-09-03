@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { useTranslations } from "next-intl";
+
 import { NAV_ITEMS } from "@/components/dashboard/nav-items";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -36,6 +38,8 @@ export function SidebarNav({
   onNavigate?: () => void;
   className?: string;
 }) {
+  const t = useTranslations("nav");
+  const tCommon = useTranslations("common");
   const pathname = usePathname();
   const current = activeHref(
     pathname,
@@ -70,13 +74,13 @@ export function SidebarNav({
                 active ? "text-sidebar-primary" : "text-muted-foreground",
               )}
             />
-            <span className="truncate">{item.label}</span>
+            <span className="truncate">{t(item.labelKey)}</span>
             {item.comingSoon ? (
               <Badge
                 variant="outline"
                 className="ml-auto border-border/70 text-[10px] font-normal text-muted-foreground"
               >
-                Soon
+                {tCommon("soon")}
               </Badge>
             ) : null}
           </Link>

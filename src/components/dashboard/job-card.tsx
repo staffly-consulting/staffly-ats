@@ -1,3 +1,7 @@
+"use client";
+
+import { useLocale, useTranslations } from "next-intl";
+
 import Link from "next/link";
 
 import { ArrowUpRight, UserPlus, Users } from "lucide-react";
@@ -14,7 +18,7 @@ import {
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import type { JobPostSummary } from "@/lib/job-posts";
-import { cn, formatDate, pluralize } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 
 export function JobCard({
   job,
@@ -23,6 +27,8 @@ export function JobCard({
   job: JobPostSummary;
   className?: string;
 }) {
+  const t = useTranslations("jobCard");
+  const locale = useLocale();
   const { stats } = job;
   const mandatoryCount = job.mandatoryCriteria.length;
   const optionalCount = job.optionalCriteria.length;
@@ -48,7 +54,7 @@ export function JobCard({
           <JobStatusPill status={job.status} />
         </div>
         <CardDescription className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-          <span>Created {formatDate(job.createdAt)}</span>
+          <span>{t("created", { date: formatDate(job.createdAt, locale) })}</span>
           {job.createdByName ? <span>by {job.createdByName}</span> : null}
           {job.referralPriorityEnabled ? (
             <span className="inline-flex items-center gap-1 text-brand">
@@ -65,20 +71,24 @@ export function JobCard({
             {stats.applicantCount}
           </div>
           <div className="text-xs text-muted-foreground">
-            {pluralize(stats.applicantCount, "applicant")}
+            {t("applicantCount", { count: stats.applicantCount })}
           </div>
         </div>
         <div>
           <div className="flex h-7 items-center">
             <ScoreBadge score={stats.averageScore} />
           </div>
-          <div className="mt-0.5 text-xs text-muted-foreground">Avg. score</div>
+          <div className="mt-0.5 text-xs text-muted-foreground">
+            {t("averageScore")}
+          </div>
         </div>
         <div>
           <div className="text-xl font-semibold text-success tabular-nums">
             {stats.shortlistedCount}
           </div>
-          <div className="text-xs text-muted-foreground">Above threshold</div>
+          <div className="text-xs text-muted-foreground">
+            {t("aboveThreshold")}
+          </div>
         </div>
       </CardContent>
 

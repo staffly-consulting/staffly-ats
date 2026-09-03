@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 
+import { getLocale, getTranslations } from "next-intl/server";
+
 import { PageHeader } from "@/components/dashboard/page-header";
 import { LanguagePreference } from "@/components/dashboard/language-preference";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -17,15 +19,12 @@ import { getOrgSettings } from "@/lib/org";
 import { getUserPreferences } from "@/lib/preferences";
 import { formatDate, initials } from "@/lib/utils";
 
-export const metadata: Metadata = { title: "Profile" };
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("meta");
+  return { title: t("profile") };
+}
 
 export const dynamic = "force-dynamic";
-
-const ROLE_LABELS = {
-  ADMIN: "Admin",
-  RECRUITER: "Recruiter",
-  VIEWER: "Viewer",
-} as const;
 
 /**
  * Profile details for the signed-in account.
@@ -40,6 +39,11 @@ const ROLE_LABELS = {
  */
 export default async function ProfilePage() {
   const context = await requireOrgContext();
+  const [t, tRole, locale] = await Promise.all([
+    getTranslations("profile"),
+    getTranslations("role"),
+    getLocale(),
+  ]);
 
   const [member, org, preferences] = await Promise.all([
     getCurrentMember(context),
@@ -47,23 +51,20 @@ export default async function ProfilePage() {
     getUserPreferences(context.clerkUserId),
   ]);
 
-  const displayName = member?.name ?? member?.email ?? "Your account";
+  const displayName = member?.name ?? member?.email ?? t("yourAccount");
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <PageHeader
-        eyebrow="Account"
-        title="Profile details"
-        description="Your account, and the preferences that follow you between organizations."
+        eyebrow={t("eyebrow")}
+        title={t("title")}
+        description={t("description")}
       />
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Details</CardTitle>
-          <CardDescription>
-            Your name, email and password are managed from the account menu at
-            the bottom of the sidebar.
-          </CardDescription>
+          <CardTitle className="text-base">{t("detailsTitle")}</CardTitle>
+          <CardDescription>{t("detailsDescription")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
           <div className="flex items-center gap-3">
@@ -73,7 +74,7 @@ export default async function ProfilePage() {
             <div className="min-w-0">
               <div className="truncate font-medium">{displayName}</div>
               <div className="truncate text-xs text-muted-foreground">
-                {member?.email ?? "No email address on this account"}
+                {member?.email ?? t("noEmail")}
               </div>
             </div>
           </div>
@@ -81,17 +82,17 @@ export default async function ProfilePage() {
           <Separator />
 
           <div className="flex items-center justify-between gap-2">
-            <span className="text-muted-foreground">Organization</span>
+            <span className="text-muted-foreground">{t("organization")}</span>
             <span className="font-medium">{org?.name ?? "—"}</span>
           </div>
 
           <Separator />
 
           <div className="flex items-center justify-between gap-2">
-            <span className="text-muted-foreground">Role here</span>
+            <span className="text-muted-foreground">{t("roleHere")}</span>
             {member ? (
               <Badge variant="outline" className="text-muted-foreground">
-                {ROLE_LABELS[member.role]}
+                {tRole(member.role)}
               </Badge>
             ) : (
               <span className="text-muted-foreground">—</span>
@@ -101,9 +102,9 @@ export default async function ProfilePage() {
           <Separator />
 
           <div className="flex items-center justify-between gap-2">
-            <span className="text-muted-foreground">Joined</span>
+            <span className="text-muted-foreground">{t("joined")}</span>
             <span className="tabular-nums">
-              {member ? formatDate(member.createdAt.toISOString()) : "—"}
+              {member ? formatDate(member.createdAt.toISOString(), locale) : "—"}
             </span>
           </div>
         </CardContent>

@@ -29,7 +29,14 @@ export const LANGUAGES: Record<Language, LanguageDefinition> = {
     code: "TH",
     nativeName: "ไทย",
     englishName: "Thai",
-    locale: "th-TH",
+    // Thai month names, GREGORIAN years — the `-u-ca-gregory` extension.
+    //
+    // Plain "th-TH" would format 2026 as 2569, the Buddhist Era. Deliberately
+    // not used: Stripe's invoices and receipts are Gregorian, so a Thai customer
+    // would see "2569" in the app and "2026" on the invoice for the same
+    // renewal date. One calendar across the product beats a locally idiomatic
+    // one that disagrees with the paperwork.
+    locale: "th-TH-u-ca-gregory",
   },
 };
 

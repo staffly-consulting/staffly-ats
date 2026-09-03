@@ -1,7 +1,10 @@
+"use client";
+
+import { useTranslations } from "next-intl";
+
 import { Badge } from "@/components/ui/badge";
 import {
   SCORE_BAND_BADGE_CLASSES,
-  SCORE_BAND_LABELS,
   SCORE_BAND_STROKE_CLASSES,
   SCORE_BAND_TEXT_CLASSES,
   formatScore,
@@ -33,6 +36,7 @@ export function ScoreRing({
   size?: keyof typeof RING_SIZES;
   className?: string;
 }) {
+  const t = useTranslations("score");
   const band = getScoreBand(score);
   const { box, text, stroke } = RING_SIZES[size];
   const filled = (Math.max(0, Math.min(100, score ?? 0)) / 100) * CIRCUMFERENCE;
@@ -41,7 +45,10 @@ export function ScoreRing({
     <div
       className={cn("relative inline-flex shrink-0", box, className)}
       role="img"
-      aria-label={`Score ${formatScore(score)} out of 100 — ${SCORE_BAND_LABELS[band]}`}
+      aria-label={t("ariaLabel", {
+        score: formatScore(score),
+        band: t(`band.${band}`),
+      })}
     >
       <svg
         viewBox={`0 0 ${VIEWBOX} ${VIEWBOX}`}
@@ -92,6 +99,7 @@ export function ScoreBadge({
   withLabel?: boolean;
   className?: string;
 }) {
+  const t = useTranslations("score");
   const band = getScoreBand(score);
 
   return (
@@ -105,9 +113,7 @@ export function ScoreBadge({
     >
       {formatScore(score)}
       {withLabel ? (
-        <span className="font-normal opacity-80">
-          {SCORE_BAND_LABELS[band]}
-        </span>
+        <span className="font-normal opacity-80">{t(`band.${band}`)}</span>
       ) : null}
     </Badge>
   );

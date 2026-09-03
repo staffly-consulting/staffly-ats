@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+
+import { getTranslations } from "next-intl/server";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -23,10 +25,14 @@ import { getEmailInbox } from "@/lib/email-inbox";
 import { checkFeature, getOrgBilling } from "@/lib/entitlements";
 import { getOrgSettings } from "@/lib/org";
 import { FEATURES } from "@/lib/plans";
+import { isStripeConfigured } from "@/lib/stripe";
 import { listUniversityPreferences } from "@/lib/universities";
 import { formatDate } from "@/lib/utils";
 
-export const metadata: Metadata = { title: "Settings" };
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("meta");
+  return { title: t("settings") };
+}
 
 export const dynamic = "force-dynamic";
 
@@ -74,7 +80,12 @@ export default async function SettingsPage() {
         />
       </div>
 
-      {billing ? <BillingPanel billing={billing} /> : null}
+      {billing ? (
+        <BillingPanel
+          billing={billing}
+          stripeConfigured={isStripeConfigured()}
+        />
+      ) : null}
 
       <Card>
         <CardHeader>

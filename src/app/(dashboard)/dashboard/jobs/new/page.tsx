@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+
+import { getTranslations } from "next-intl/server";
 import Link from "next/link";
 
 import { ArrowLeft } from "lucide-react";
@@ -9,7 +11,10 @@ import { Button } from "@/components/ui/button";
 import { requireOrgContext } from "@/lib/auth";
 import { listUniversityPreferences } from "@/lib/universities";
 
-export const metadata: Metadata = { title: "New job post" };
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("meta");
+  return { title: t("newJobPost") };
+}
 
 export const dynamic = "force-dynamic";
 

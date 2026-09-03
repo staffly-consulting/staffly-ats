@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 
 import { ClerkProvider } from "@clerk/nextjs";
+import { NextIntlClientProvider } from "next-intl";
+import { getLocale } from "next-intl/server";
 
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -29,11 +31,15 @@ export const metadata: Metadata = {
     "AI-powered recruitment screening. Ingest applications, score them against your criteria, and shortlist in minutes.",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Resolved per request from the signed-in account's saved preference; see
+  // src/i18n/request.ts. Drives both <html lang> and Intl formatting.
+  const locale = await getLocale();
+
   return (
     // Clerk's prebuilt components pick up the app's look from these variables
     // rather than shipping their own palette, so sign-in and the org switcher
@@ -59,12 +65,14 @@ export default function RootLayout({
         },
       }}
     >
-      <html lang="en" suppressHydrationWarning>
+      <html lang={locale} suppressHydrationWarning>
         <body
           className={`${inter.variable} ${jetbrainsMono.variable} min-h-svh antialiased`}
         >
-          <TooltipProvider delayDuration={200}>{children}</TooltipProvider>
-          <Toaster position="bottom-right" />
+          <NextIntlClientProvider>
+            <TooltipProvider delayDuration={200}>{children}</TooltipProvider>
+            <Toaster position="bottom-right" />
+          </NextIntlClientProvider>
         </body>
       </html>
     </ClerkProvider>

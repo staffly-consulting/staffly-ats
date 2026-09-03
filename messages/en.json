@@ -1,0 +1,179 @@
+{
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "add": "Add",
+    "remove": "Remove",
+    "close": "Close",
+    "back": "Back",
+    "loading": "Loading…",
+    "none": "—",
+    "you": "You",
+    "unlimited": "unlimited",
+    "soon": "Soon",
+    "tryAgain": "Try again in a moment."
+  },
+  "nav": {
+    "jobPosts": "Job Posts",
+    "inbox": "Inbox",
+    "issues": "Issues",
+    "emailConnection": "Email Connection",
+    "team": "Team",
+    "settings": "Settings",
+    "profileDetails": "Profile details",
+    "openNavigation": "Open navigation",
+    "navigationLabel": "Navigation",
+    "navigationDescription": "Staffly ATS+ dashboard sections",
+    "aiOn": "AI screening is on",
+    "aiOnDescription": "New applications are extracted and scored against each post's criteria automatically."
+  },
+  "jobStatus": {
+    "DRAFT": "Draft",
+    "OPEN": "Open",
+    "CLOSED": "Closed",
+    "ARCHIVED": "Archived"
+  },
+  "candidateStatus": {
+    "NEW": "New",
+    "PROCESSING": "Processing",
+    "EXTRACTED": "Extracted",
+    "SCORED": "Scored",
+    "SHORTLISTED": "Shortlisted",
+    "REJECTED": "Rejected",
+    "ERROR": "Error"
+  },
+  "score": {
+    "ariaLabel": "Score {score} out of 100 — {band}",
+    "band": {
+      "strong": "Strong match",
+      "moderate": "Possible match",
+      "weak": "Weak match",
+      "unscored": "Not scored yet"
+    }
+  },
+  "profile": {
+    "metaTitle": "Profile",
+    "eyebrow": "Account",
+    "title": "Profile details",
+    "description": "Your account, and the preferences that follow you between organizations.",
+    "detailsTitle": "Details",
+    "detailsDescription": "Your name, email and password are managed from the account menu at the bottom of the sidebar.",
+    "noEmail": "No email address on this account",
+    "organization": "Organization",
+    "roleHere": "Role here",
+    "joined": "Joined",
+    "yourAccount": "Your account"
+  },
+  "language": {
+    "title": "Language",
+    "description": "Your preferred language. This applies to your account across every organization you belong to.",
+    "label": "Preferred language",
+    "saved": "Language set to {language}.",
+    "saveFailed": "Could not save your language.",
+    "invalid": "Pick one of the available languages."
+  },
+  "role": {
+    "ADMIN": "Admin",
+    "RECRUITER": "Recruiter",
+    "VIEWER": "Viewer"
+  },
+  "team": {
+    "metaTitle": "Team",
+    "eyebrow": "Settings",
+    "title": "Team",
+    "description": "Everyone with access to this organization. Use the organization switcher in the sidebar to invite or remove people.",
+    "rolesNotEnforced": "Roles are recorded here but <strong>not yet enforced</strong> — any member can currently create job posts and manage the email connection.",
+    "memberCount": "{count, plural, one {# member} other {# members}}",
+    "columnMember": "Member",
+    "columnRole": "Role",
+    "columnJoined": "Joined",
+    "emptyTitle": "No members yet",
+    "emptyDescription": "Invite people from the organization switcher in the sidebar and they will appear here."
+  },
+  "meta": {
+    "signUp": "Sign up",
+    "signIn": "Sign in",
+    "jobPosts": "Job Posts",
+    "emailConnection": "Email connection",
+    "team": "Team",
+    "issues": "Issues",
+    "inbox": "Inbox",
+    "selectOrg": "Choose an organization",
+    "settings": "Settings",
+    "profile": "Profile",
+    "newJobPost": "New job post"
+  },
+  "issues": {
+    "title": "Issues",
+    "description": "Candidates whose resume could not be read or scored. Each one is a real application that has not been reviewed, so they are surfaced here rather than left to be found one at a time.",
+    "needAttention": "{count, plural, one {# candidate needs attention} other {# candidates need attention}}"
+  },
+  "dashboard": {
+    "title": "Job Posts",
+    "description": "Every open role and the candidates screened against it. Scores are produced from the criteria you define on each post.",
+    "newJobPost": "New job post",
+    "tabAll": "All",
+    "tabOpen": "Open",
+    "tabDraft": "Drafts",
+    "tabArchived": "Closed & archived",
+    "emptyTitle": "Nothing here yet",
+    "emptyDescription": "Job posts you create will show up in this view.",
+    "statOpenRoles": "Open roles",
+    "statPostsTotal": "{count, plural, one {# post in total} other {# posts in total}}",
+    "statApplicants": "Applicants",
+    "statAwaitingScore": "{count} awaiting a score",
+    "statAllScored": "All applications scored",
+    "statAboveThreshold": "Above threshold",
+    "statScoringOrHigher": "Scoring {threshold} or higher",
+    "statAverageScore": "Average score",
+    "statAcrossScored": "Across all scored applications"
+  },
+  "jobCard": {
+    "averageScore": "Avg. score",
+    "aboveThreshold": "Above threshold",
+    "created": "Created {date}",
+    "applicantCount": "{count, plural, one {# applicant} other {# applicants}}"
+  },
+  "inbox": {
+    "title": "Inbox",
+    "description": "Resumes forwarded to your alias that have not been routed to a role yet. Assign one to a job post to move it into that pipeline.",
+    "emptyTitle": "No unassigned resumes",
+    "emptyDescription": "Resumes forwarded to your alias land here before they are routed to a role.",
+    "columnSender": "Sender",
+    "columnResume": "Resume",
+    "columnReceived": "Received",
+    "columnAssign": "Assign to job post",
+    "unknownSender": "Unknown sender",
+    "noAddress": "no address",
+    "assignAria": "Assign {name} to a job post",
+    "assignFailed": "Could not assign",
+    "assigned": "Assigned to {title}",
+    "jobPostFallback": "job post",
+    "candidateFallback": "candidate",
+    "openResumeFailed": "Could not open resume"
+  },
+  "failures": {
+    "emptyTitle": "Nothing has failed",
+    "emptyDescription": "Candidates that fail extraction or scoring show up here so they do not disappear silently.",
+    "columnCandidate": "Candidate",
+    "columnJobPost": "Job post",
+    "columnFailedAt": "Failed at",
+    "columnWhen": "When",
+    "unassigned": "Unassigned",
+    "unknownSender": "Unknown sender",
+    "retry": "Retry",
+    "retryFailed": "Could not retry",
+    "extraction": "Extraction",
+    "scoring": "Scoring",
+    "extractionQueued": "Extraction queued",
+    "scoringQueued": "Scoring queued",
+    "queuedDescription": "Refresh in a moment to see the result.",
+    "extractionExplanation": "The resume was never read — unsupported format, an unreadable scan, or the model returned something unusable.",
+    "scoringExplanation": "The resume was read, but judging it against the job's criteria failed.",
+    "openResumeFailed": "Could not open resume",
+    "retryExtraction": "Retry extraction",
+    "retryScoring": "Retry scoring"
+  }
+}

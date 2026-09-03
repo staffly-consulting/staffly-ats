@@ -26,6 +26,10 @@ export interface OrgBilling extends BillableOrg {
   stripeCustomerId: string | null;
   stripeSubscriptionId: string | null;
   stripeSubscriptionStatus: string | null;
+  /** End of the current paid period, ISO. Null until a subscription exists. */
+  currentPeriodEnd: string | null;
+  /** Cancelled but still inside a paid period — "ends on", not "renews on". */
+  cancelAtPeriodEnd: boolean;
   applicationsUsedInCycle: number;
   poolCycleAnchor: string | null;
   quota: QuotaSnapshot;
@@ -40,6 +44,8 @@ export async function getOrgBilling(orgId: string): Promise<OrgBilling | null> {
       stripeCustomerId: true,
       stripeSubscriptionId: true,
       stripeSubscriptionStatus: true,
+      currentPeriodEnd: true,
+      cancelAtPeriodEnd: true,
       applicationsUsedInCycle: true,
       poolCycleAnchor: true,
     },
@@ -50,6 +56,7 @@ export async function getOrgBilling(orgId: string): Promise<OrgBilling | null> {
   return {
     ...org,
     poolCycleAnchor: org.poolCycleAnchor?.toISOString() ?? null,
+    currentPeriodEnd: org.currentPeriodEnd?.toISOString() ?? null,
     quota: quotaSnapshot(org),
   };
 }

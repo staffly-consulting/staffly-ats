@@ -4,6 +4,7 @@ import { useTransition } from "react";
 import Link from "next/link";
 
 import { CheckCircle2, FileText, Mail, RefreshCw } from "lucide-react";
+import { useLocale, useTranslations } from "next-intl";
 import { toast } from "sonner";
 
 import {
@@ -33,21 +34,14 @@ import { formatDateTime } from "@/lib/utils";
  * which retry button is the right one.
  */
 function failurePoint(candidate: FailedCandidate): {
-  label: string;
-  hint: string;
   action: "extraction" | "scoring";
 } {
-  if (!candidate.hasExtractedData) {
-    return {
-      label: "Extraction",
-      hint: "The resume was never read — unsupported format, an unreadable scan, or the model returned something unusable.",
-      action: "extraction",
-    };
-  }
+  // Returns the stage only; the label, the explanation and the retry wording all
+  // come from the message catalogue, keyed off this. "Retry extraction" is a
+  // separate key from "Extraction" rather than a lowercased concatenation —
+  // that trick only works in English.
   return {
-    label: "Scoring",
-    hint: "The resume was read, but judging it against the job's criteria failed.",
-    action: "scoring",
+    action: candidate.hasExtractedData ? "scoring" : "extraction",
   };
 }
 
@@ -56,6 +50,8 @@ export function FailedCandidatesTable({
 }: {
   candidates: FailedCandidate[];
 }) {
+  const t = useTranslations("failures");
+  const locale = useLocale();
   const [pending, startTransition] = useTransition();
 
   function retry(candidate: FailedCandidate) {
@@ -67,12 +63,12 @@ export function FailedCandidatesTable({
           : await rescoreCandidateAction(candidate.id);
 
       if (!result.ok) {
-        toast.error("Could not retry", { description: result.error });
+        toast.error(t("retryFailed"), { description: result.error });
         return;
       }
       toast.success(
-        action === "extraction" ? "Extraction queued" : "Scoring queued",
-        { description: "Refresh in a moment to see the result." },
+        action === "extraction" ? t("extractionQueued") : t("scoringQueued"),
+        { description: t("queuedDescription") },
       );
     });
   }
@@ -81,7 +77,7 @@ export function FailedCandidatesTable({
     startTransition(async () => {
       const result = await getResumeUrlAction(candidateId);
       if (!result.ok) {
-        toast.error("Could not open resume", { description: result.error });
+        toast.error(t("openResumeFailed"), { description: result.error });
         return;
       }
       window.open(result.data, "_blank", "noopener,noreferrer");
@@ -93,10 +89,9 @@ export function FailedCandidatesTable({
       <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border py-16 text-center">
         <CheckCircle2 className="size-8 text-success/70" />
         <div>
-          <p className="text-sm font-medium">Nothing has failed</p>
+          <p className="text-sm font-medium">{t("emptyTitle")}</p>
           <p className="text-sm text-muted-foreground">
-            Candidates that fail extraction or scoring show up here so they do
-            not disappear silently.
+            {t("emptyDescription")}
           </p>
         </div>
       </div>
@@ -109,11 +104,11 @@ export function FailedCandidatesTable({
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
-              <TableHead className="min-w-55">Candidate</TableHead>
-              <TableHead>Failed at</TableHead>
-              <TableHead className="min-w-40">Job post</TableHead>
-              <TableHead>When</TableHead>
-              <TableHead className="text-right">Retry</TableHead>
+              <TableHead className="min-w-55">{t("columnCandidate")}</TableHead>
+              <TableHead>{t("columnFailedAt")}</TableHead>
+              <TableHead className="min-w-40">{t("columnJobPost")}</TableHead>
+              <TableHead>{t("columnWhen")}</TableHead>
+              <TableHead className="text-right">{t("retry")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -123,7 +118,7 @@ export function FailedCandidatesTable({
                 <TableRow key={candidate.id} className="hover:bg-transparent">
                   <TableCell>
                     <div className="font-medium">
-                      {candidate.name ?? "Unknown sender"}
+                      {candidate.name ?? t("unknownSender")}
                     </div>
                     <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                       <Mail className="size-3 shrink-0" />
@@ -150,10 +145,12 @@ export function FailedCandidatesTable({
                       variant="outline"
                       className="border-danger/25 bg-danger/10 text-danger"
                     >
-                      {point.label}
+                      {t(point.action)}
                     </Badge>
                     <p className="mt-1 max-w-xs text-xs leading-relaxed text-muted-foreground">
-                      {point.hint}
+                      {point.action === "extraction"
+                        ? t("extractionExplanation")
+                        : t("scoringExplanation")}
                     </p>
                   </TableCell>
 
@@ -166,12 +163,12 @@ export function FailedCandidatesTable({
                         {candidate.jobPostTitle}
                       </Link>
                     ) : (
-                      <span className="italic">Unassigned</span>
+                      <span className="italic">{t("unassigned")}</span>
                     )}
                   </TableCell>
 
                   <TableCell className="text-xs text-muted-foreground tabular-nums">
-                    {formatDateTime(candidate.updatedAt)}
+                    {formatDateTime(candidate.updatedAt, locale)}
                   </TableCell>
 
                   <TableCell className="text-right">
@@ -186,7 +183,9 @@ export function FailedCandidatesTable({
                           pending ? "size-3.5 animate-spin" : "size-3.5"
                         }
                       />
-                      Retry {point.label.toLowerCase()}
+                      {point.action === "extraction"
+                        ? t("retryExtraction")
+                        : t("retryScoring")}
                     </Button>
                   </TableCell>
                 </TableRow>

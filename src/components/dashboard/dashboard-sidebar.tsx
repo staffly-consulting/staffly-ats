@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { OrganizationSwitcher, UserButton } from "@clerk/nextjs";
 import { Menu, Sparkles, UserRound } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { SidebarNav } from "@/components/dashboard/sidebar-nav";
 import { StafflyLogo } from "@/components/staffly-logo";
@@ -37,6 +38,8 @@ const switcherAppearance = {
 } as const;
 
 function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
+  const t = useTranslations("nav");
+
   return (
     <div className="flex h-full flex-col gap-4 p-3">
       <div className="px-1 pt-1">
@@ -58,11 +61,10 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
       <div className="rounded-lg border border-border/70 bg-brand-subtle/60 p-3">
         <p className="flex items-center gap-1.5 text-xs font-medium text-foreground">
           <Sparkles className="size-3.5 text-brand" />
-          AI screening is on
+          {t("aiOn")}
         </p>
         <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-          New applications are extracted and scored against each post&apos;s
-          criteria automatically.
+          {t("aiOnDescription")}
         </p>
       </div>
 
@@ -87,7 +89,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
           <UserButton.MenuItems>
             <UserButton.Link
               href="/dashboard/profile"
-              label="Profile details"
+              label={t("profileDetails")}
               labelIcon={<UserRound className="size-4" />}
             />
           </UserButton.MenuItems>
@@ -113,6 +115,7 @@ export function DesktopSidebar() {
 
 /** Hamburger + slide-over, below the `lg` breakpoint. */
 export function MobileSidebar() {
+  const t = useTranslations("nav");
   const [open, setOpen] = useState(false);
 
   return (
@@ -120,13 +123,13 @@ export function MobileSidebar() {
       <SheetTrigger asChild>
         <Button variant="ghost" size="icon" className="lg:hidden">
           <Menu className="size-5" />
-          <span className="sr-only">Open navigation</span>
+          <span className="sr-only">{t("openNavigation")}</span>
         </Button>
       </SheetTrigger>
       <SheetContent side="left" className="w-72 bg-sidebar p-0">
-        <SheetTitle className="sr-only">Navigation</SheetTitle>
+        <SheetTitle className="sr-only">{t("navigationLabel")}</SheetTitle>
         <SheetDescription className="sr-only">
-          Staffly ATS+ dashboard sections
+          {t("navigationDescription")}
         </SheetDescription>
         <SidebarBody onNavigate={() => setOpen(false)} />
       </SheetContent>
