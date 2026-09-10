@@ -69,7 +69,9 @@ async function resolveOrgId(input: {
   return null;
 }
 
-function customerIdOf(value: string | Stripe.Customer | Stripe.DeletedCustomer | null): string | null {
+function customerIdOf(
+  value: string | Stripe.Customer | Stripe.DeletedCustomer | null,
+): string | null {
   if (!value) return null;
   return typeof value === "string" ? value : value.id;
 }

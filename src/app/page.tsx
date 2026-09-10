@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ArrowRight, Filter, Mail, ScanLine, ShieldCheck } from "lucide-react";
 
 import { ScoreRing } from "@/components/dashboard/score-indicator";
+import { MarketingHeader } from "@/components/marketing/marketing-header";
 import { StafflyLogo } from "@/components/staffly-logo";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -28,21 +29,9 @@ const STEPS = [
 export default function LandingPage() {
   return (
     <div className="min-h-svh bg-background">
-      {/* TODO(marketing): this is a placeholder shell — real copy, pricing and
-          auth entry points land alongside Supabase auth. */}
-      <header className="sticky top-0 z-20 border-b border-border bg-background/80 backdrop-blur-sm">
-        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4 sm:px-6">
-          <StafflyLogo href="/" />
-          <div className="flex items-center gap-2">
-            <Button asChild variant="ghost" size="sm">
-              <Link href="/dashboard">Sign in</Link>
-            </Button>
-            <Button asChild size="sm">
-              <Link href="/dashboard">Open dashboard</Link>
-            </Button>
-          </div>
-        </div>
-      </header>
+      {/* TODO(marketing): the hero and step copy are still placeholder. Pricing
+          and the auth entry points are real — see /pricing. */}
+      <MarketingHeader />
 
       <main>
         <section className="relative overflow-hidden border-b border-border">
@@ -67,13 +56,13 @@ export default function LandingPage() {
                 </p>
                 <div className="flex flex-wrap items-center gap-3">
                   <Button asChild size="lg">
-                    <Link href="/dashboard">
-                      Explore the dashboard
+                    <Link href="/pricing">
+                      See plans and pricing
                       <ArrowRight className="size-4" />
                     </Link>
                   </Button>
                   <Button asChild size="lg" variant="outline">
-                    <Link href="/dashboard/jobs/new">Create a job post</Link>
+                    <Link href="/dashboard">Explore the dashboard</Link>
                   </Button>
                 </div>
                 <p className="flex items-center gap-1.5 text-xs text-muted-foreground">

@@ -21,7 +21,7 @@ import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 
-import { PLANS } from "../src/lib/plans";
+import { PLANS, subscriptionIsActive } from "../src/lib/plans";
 
 /** Matched case-insensitively when no --org is given. */
 const DEFAULT_INTERNAL_ORG_NAMES = ["staffly organization", "staffly"];
@@ -58,6 +58,8 @@ async function main() {
       applicationsUsedInCycle: true,
       poolCycleAnchor: true,
       stripeSubscriptionId: true,
+      stripeSubscriptionStatus: true,
+      requiresSubscription: true,
       _count: { select: { members: true, jobPosts: true, candidates: true } },
     },
   });
@@ -70,9 +72,19 @@ async function main() {
   if (listOnly) {
     console.log("\nOrganizations:\n");
     for (const org of orgs) {
+      // `planTier` alone stopped telling the whole story once the paywall
+      // landed: an ENTERPRISE org with no subscription is locked out unless
+      // `requiresSubscription` is false. Both are printed so a blank screen can
+      // be diagnosed from here rather than from the database.
+      const access = subscriptionIsActive(org)
+        ? "access: OK"
+        : "access: LOCKED — no active subscription and requiresSubscription is true";
+
       console.log(
         `  ${org.id}\n    ${org.name}  ·  ${org.planTier}  ·  ` +
-          `${org._count.members} member(s), ${org._count.jobPosts} job post(s), ${org._count.candidates} candidate(s)`,
+          `${org._count.members} member(s), ${org._count.jobPosts} job post(s), ${org._count.candidates} candidate(s)\n` +
+          `    status: ${org.stripeSubscriptionStatus ?? "none"}  ·  ` +
+          `requiresSubscription: ${org.requiresSubscription}  ·  ${access}`,
       );
     }
     console.log("");
@@ -108,9 +120,14 @@ async function main() {
     return;
   }
 
-  if (target.planTier === "ENTERPRISE") {
+  // The tier alone no longer settles it. Since the paywall, an ENTERPRISE org
+  // with `requiresSubscription: true` and no Stripe subscription is locked out
+  // — the tier says "unlimited" while the gate says "pay first". Returning
+  // early on the tier would leave that org broken with the script reporting
+  // nothing to do, so the exemption is checked too.
+  if (target.planTier === "ENTERPRISE" && !target.requiresSubscription) {
     console.log(
-      `\n${target.name} (${target.id}) is already on ENTERPRISE. Nothing to do.\n`,
+      `\n${target.name} (${target.id}) is already on ENTERPRISE and exempt from the paywall. Nothing to do.\n`,
     );
     return;
   }
@@ -121,6 +138,10 @@ async function main() {
       planTier: "ENTERPRISE",
       // Legacy free-text column, kept in step so the two never contradict.
       subscriptionTier: "enterprise",
+      // The point of an internal org: exempt from the paywall entirely. Without
+      // this the tier grants every feature while `subscriptionIsActive` denies
+      // all of them, because there is no Stripe subscription behind it.
+      requiresSubscription: false,
       // No Stripe subscription backs this, so there is no interval to record.
       billingInterval: null,
       // The pool still needs an anchor: the daily reset job only looks at orgs

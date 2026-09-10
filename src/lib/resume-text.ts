@@ -1,6 +1,12 @@
 import "server-only";
 
 import { fileExtension } from "@/lib/inbound-email";
+import {
+  describeHiddenText,
+  scanForHiddenText,
+  stripHiddenText,
+  type HiddenSpan,
+} from "@/lib/hidden-text";
 
 /**
  * Pulls a text layer out of a resume file, when there is one.
@@ -20,8 +26,30 @@ import { fileExtension } from "@/lib/inbound-email";
  * soup, and that is worse than no text at all.
  */
 
+/**
+ * What a deterministic scan found hidden in the document, if anything.
+ *
+ * Present on the text path only. The vision path does not need it: text drawn
+ * in white on white, or at one point, or in an invisible render mode, is as
+ * invisible to a model looking at the rendered page as it is to a person. The
+ * text layer is the only place this attack works, which is exactly why it is
+ * defended here rather than in the prompt.
+ */
+export interface HiddenTextFinding {
+  /** Spans removed from `text` before it goes anywhere near the model. */
+  removed: HiddenSpan[];
+  /** Human-readable, for the candidate flag a recruiter will read. */
+  summary: string;
+}
+
 export type ResumeTextResult =
-  | { kind: "text"; text: string; pages?: number }
+  | {
+      kind: "text";
+      text: string;
+      pages?: number;
+      /** Set only when hidden text was found AND removed. */
+      hidden?: HiddenTextFinding;
+    }
   | { kind: "needs-vision"; reason: string };
 
 /** Below this, whatever came out is not a resume's worth of text. */
@@ -80,17 +108,49 @@ async function extractPdf(bytes: Uint8Array): Promise<ResumeTextResult> {
   // `unpdf` is a serverless-friendly build of pdf.js — no filesystem access and
   // no worker thread, which matters inside an Inngest step.
   const { extractText, getDocumentProxy } = await import("unpdf");
+
+  // One parse, shared. pdf.js takes ownership of the buffer it is given, so a
+  // second `getDocumentProxy` over the same bytes fails on a detached
+  // ArrayBuffer — the scan takes the document rather than the bytes.
   const document = await getDocumentProxy(bytes);
-  const { text, totalPages } = await extractText(document, {
-    mergePages: true,
-  });
+  const [{ text, totalPages }, scan] = await Promise.all([
+    extractText(document, { mergePages: true }),
+    scanForHiddenText(document),
+  ]);
 
   const merged = tidy(Array.isArray(text) ? text.join("\n\n") : text);
-  const verdict = looksUsable(merged);
 
-  return verdict.ok
-    ? { kind: "text", text: merged, pages: totalPages }
-    : { kind: "needs-vision", reason: verdict.reason };
+  // Stripped BEFORE the usability verdict, so a document whose only substantial
+  // text is an injection is correctly judged to have no usable text and goes to
+  // vision, rather than reaching the model as a page of instructions.
+  const stripped = stripHiddenText(merged, scan.spans);
+
+  if (stripped.suppressed) {
+    // The scan claimed most of the document was invisible, which is far more
+    // likely to be a detector failure than a resume. Logged rather than acted
+    // on — see MAX_HIDDEN_SHARE.
+    console.warn(
+      `[resume-text] hidden-text scan flagged ${scan.spans.length} span(s) covering most of the document; ignoring the scan`,
+    );
+  }
+
+  const verdict = looksUsable(stripped.text);
+
+  if (!verdict.ok) return { kind: "needs-vision", reason: verdict.reason };
+
+  return {
+    kind: "text",
+    text: stripped.text,
+    pages: totalPages,
+    ...(stripped.removed.length > 0
+      ? {
+          hidden: {
+            removed: stripped.removed,
+            summary: describeHiddenText(stripped.removed),
+          },
+        }
+      : {}),
+  };
 }
 
 async function extractDocx(bytes: Uint8Array): Promise<ResumeTextResult> {

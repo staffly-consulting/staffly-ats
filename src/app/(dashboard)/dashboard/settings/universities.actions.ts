@@ -2,8 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 
-import { requireOrgContext } from "@/lib/auth";
+import { permissionError, requireOrgContext } from "@/lib/auth";
 import { assertFeature } from "@/lib/entitlements";
+import { PERMISSIONS } from "@/lib/permissions";
 import { FEATURES } from "@/lib/plans";
 import { prisma } from "@/lib/prisma";
 import { universityPreferenceSchema } from "@/lib/validations/job-post";
@@ -23,7 +24,11 @@ export async function updateUniversityAction(
   id: string,
   input: unknown,
 ): Promise<UniversityActionResult> {
-  const { orgId } = await requireOrgContext();
+  const context = await requireOrgContext();
+  const { orgId } = context;
+
+  const denied = await permissionError(context, PERMISSIONS.UNIVERSITY_WRITE);
+  if (denied) return denied;
 
   try {
     await assertFeature(orgId, FEATURES.UNIVERSITY_PREFERENCES);
@@ -82,7 +87,11 @@ export async function updateUniversityAction(
 export async function deleteUniversityAction(
   id: string,
 ): Promise<UniversityActionResult> {
-  const { orgId } = await requireOrgContext();
+  const context = await requireOrgContext();
+  const { orgId } = context;
+
+  const denied = await permissionError(context, PERMISSIONS.UNIVERSITY_WRITE);
+  if (denied) return denied;
 
   try {
     await assertFeature(orgId, FEATURES.UNIVERSITY_PREFERENCES);
@@ -117,7 +126,11 @@ export async function deleteUniversityAction(
 export async function createUniversityAction(
   input: unknown,
 ): Promise<UniversityActionResult> {
-  const { orgId } = await requireOrgContext();
+  const context = await requireOrgContext();
+  const { orgId } = context;
+
+  const denied = await permissionError(context, PERMISSIONS.UNIVERSITY_WRITE);
+  if (denied) return denied;
 
   try {
     await assertFeature(orgId, FEATURES.UNIVERSITY_PREFERENCES);

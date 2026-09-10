@@ -59,13 +59,17 @@ export function CandidateFilterBar({
   const nationality = searchParams.get("nationality") ?? ANY;
   const referralOnly = searchParams.get("referral") === "1";
   const flaggedOnly = searchParams.get("flagged") === "1";
+  const unreadOnly = searchParams.get("unread") === "1";
+  const decision = searchParams.get("decision") ?? ANY;
 
   const hasServerFilter =
     minScore !== "0" ||
     university !== ANY ||
     nationality !== ANY ||
     referralOnly ||
-    flaggedOnly;
+    flaggedOnly ||
+    unreadOnly ||
+    decision !== ANY;
 
   function setParam(key: string, value: string | null) {
     const next = new URLSearchParams(searchParams.toString());
@@ -122,6 +126,27 @@ export function CandidateFilterBar({
                   {option.label}
                 </SelectItem>
               ))}
+            </SelectContent>
+          </Select>
+
+          {/* The human decision, kept next to the score filter because the two
+              answer adjacent questions: what the model thought, and what a
+              person concluded. "Not yet decided" is the working queue. */}
+          <Select
+            value={decision}
+            onValueChange={(value) => setParam("decision", value)}
+          >
+            <SelectTrigger
+              className="w-full lg:w-44"
+              aria-label="Hiring decision"
+            >
+              <SelectValue placeholder="Any decision" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ANY}>Any decision</SelectItem>
+              <SelectItem value="SHORTLISTED">Shortlisted</SelectItem>
+              <SelectItem value="REJECTED">Rejected</SelectItem>
+              <SelectItem value="undecided">Not yet decided</SelectItem>
             </SelectContent>
           </Select>
 
@@ -188,6 +213,23 @@ export function CandidateFilterBar({
             >
               <Flag className="size-3 text-warning" />
               Flagged
+            </Label>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="unread-only"
+              checked={unreadOnly}
+              onCheckedChange={(checked) =>
+                setParam("unread", checked === true ? "1" : null)
+              }
+            />
+            <Label
+              htmlFor="unread-only"
+              className="flex items-center gap-1 text-sm font-normal"
+            >
+              <span aria-hidden className="size-2 rounded-full bg-brand" />
+              Unopened
             </Label>
           </div>
         </div>

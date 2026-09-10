@@ -26,6 +26,17 @@ export const scoreCandidateFunction = inngest.createFunction(
     name: "Score candidate against job criteria",
     retries: 3,
     concurrency: { key: "event.data.orgId", limit: 3 },
+    // Per-org ceiling on model calls, independent of what triggered them.
+    //
+    // `concurrency` above paces work; it does not bound it — three at a time,
+    // forever, is still unbounded spend. This is the bound. It sits below the
+    // per-candidate cap in `candidate-actions.ts` because the two catch
+    // different things: that one stops one candidate being re-run in a loop,
+    // this one stops any single tenant becoming the whole Anthropic bill.
+    //
+    // Sized well above real ingestion — a busy agency forwarding a morning's
+    // applications stays under it — so it only bites on a runaway.
+    throttle: { key: "event.data.orgId", limit: 30, period: "1m" },
     triggers: [{ event: "candidate/ready-for-scoring" }],
   },
   async ({ event, step, logger }) => {
@@ -42,6 +53,7 @@ export const scoreCandidateFunction = inngest.createFunction(
           jobPostId: true,
           extractedData: true,
           referral: { select: { id: true } },
+          hiddenTextNote: true,
           jobPost: {
             select: {
               id: true,
@@ -97,6 +109,10 @@ export const scoreCandidateFunction = inngest.createFunction(
         // A referral only counts when a Referral row exists. The candidate's own
         // claim in `extractedData.referralMentioned` is not evidence.
         hasVerifiedReferral: candidate.referral !== null,
+        // Deterministic, recorded at extraction time. Carried through so the
+        // recruiter sees the manipulation attempt on the scored candidate,
+        // where they are actually looking.
+        hiddenTextNote: candidate.hiddenTextNote,
         referralBonusWeight: candidate.jobPost.referralPriorityEnabled
           ? candidate.jobPost.referralBonusWeight
           : 0,
@@ -182,6 +198,7 @@ export const scoreCandidateFunction = inngest.createFunction(
       hasVerifiedReferral: context.hasVerifiedReferral,
       candidateUniversity: context.profile.university,
       preferredUniversityNames: context.preferredUniversityNames,
+      hiddenTextNote: context.hiddenTextNote,
     });
 
     // -------------------------------------------------------------------

@@ -7,6 +7,7 @@ import {
   Award,
   Check,
   Flag,
+  Loader2,
   Minus,
   Target,
   Briefcase,
@@ -20,11 +21,14 @@ import {
   RefreshCw,
   Sparkles,
   UserPlus,
+  Star,
+  ThumbsDown,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import {
   rescoreCandidateAction,
+  setCandidateDecisionAction,
   retryExtractionAction,
 } from "@/app/(dashboard)/dashboard/candidate-actions";
 import { CandidateStatusPill } from "@/components/dashboard/status-pill";
@@ -46,6 +50,7 @@ import {
   SCORE_BAND_LABELS,
   getScoreBand,
 } from "@/lib/score";
+import { useVisiblePending } from "@/lib/use-visible-pending";
 import { cn, formatDateTime, pluralize } from "@/lib/utils";
 
 /**
@@ -105,14 +110,23 @@ const NOT_STATED = (
 
 function SectionHeading({
   icon: Icon,
+  tone = "text-brand",
   children,
 }: {
   icon: React.ElementType;
+  /**
+   * Colour for the icon only — the label stays muted.
+   *
+   * Tinting the glyph rather than the text is what keeps a long sheet
+   * scannable: the eye finds "the orange one" faster than it reads six
+   * identical grey headings, and the type hierarchy is unchanged.
+   */
+  tone?: string;
   children: React.ReactNode;
 }) {
   return (
     <h3 className="flex items-center gap-1.5 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-      <Icon className="size-3.5" />
+      <Icon className={cn("size-3.5", tone)} />
       {children}
     </h3>
   );
@@ -122,13 +136,17 @@ function ExtractedPanel({ data }: { data: ExtractedResumeData }) {
   return (
     <>
       <section className="rounded-lg border border-border bg-muted/40 p-3">
-        <SectionHeading icon={Sparkles}>Summary</SectionHeading>
+        <SectionHeading icon={Sparkles} tone="text-brand">
+          Summary
+        </SectionHeading>
         <p className="mt-2 text-sm leading-relaxed">{data.rawSummary}</p>
       </section>
 
       {data.referralMentioned ? (
         <section className="rounded-lg border border-brand/25 bg-brand/5 p-3">
-          <SectionHeading icon={UserPlus}>Referral mentioned</SectionHeading>
+          <SectionHeading icon={UserPlus} tone="text-brand">
+            Referral mentioned
+          </SectionHeading>
           <p className="mt-2 text-sm leading-relaxed">
             {data.referralNote ??
               "The resume mentions a referral but names no referrer."}
@@ -141,7 +159,7 @@ function ExtractedPanel({ data }: { data: ExtractedResumeData }) {
 
       {data.skills.length > 0 ? (
         <section>
-          <SectionHeading icon={Sparkles}>
+          <SectionHeading icon={Sparkles} tone="text-brand">
             Skills ({data.skills.length})
           </SectionHeading>
           <div className="mt-2 flex flex-wrap gap-1.5">
@@ -155,7 +173,9 @@ function ExtractedPanel({ data }: { data: ExtractedResumeData }) {
       ) : null}
 
       <section>
-        <SectionHeading icon={GraduationCap}>Education</SectionHeading>
+        <SectionHeading icon={GraduationCap} tone="text-violet-500">
+          Education
+        </SectionHeading>
         <div className="mt-2 space-y-1 text-sm">
           <div>
             {data.educationLevel
@@ -173,7 +193,7 @@ function ExtractedPanel({ data }: { data: ExtractedResumeData }) {
 
       {data.workHistory.length > 0 ? (
         <section>
-          <SectionHeading icon={Briefcase}>
+          <SectionHeading icon={Briefcase} tone="text-sky-500">
             Work history ({data.workHistory.length}{" "}
             {pluralize(data.workHistory.length, "role")})
           </SectionHeading>
@@ -210,7 +230,9 @@ function ExtractedPanel({ data }: { data: ExtractedResumeData }) {
 
       {data.certifications.length > 0 ? (
         <section>
-          <SectionHeading icon={Award}>Certifications</SectionHeading>
+          <SectionHeading icon={Award} tone="text-amber-500">
+            Certifications
+          </SectionHeading>
           <ul className="mt-2 space-y-1.5">
             {data.certifications.map((cert, index) => (
               <li key={`${cert.name}-${index}`} className="text-sm">
@@ -262,7 +284,9 @@ function ScorePanel({
           two facts together are what a recruiter acts on. */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <SectionHeading icon={Target}>Score</SectionHeading>
+          <SectionHeading icon={Target} tone="text-brand">
+            Score
+          </SectionHeading>
           <div className="mt-2 flex items-baseline gap-2">
             <span
               className={cn(
@@ -290,7 +314,10 @@ function ScorePanel({
           onClick={onRescore}
         >
           <RefreshCw
-            className={rescoring ? "size-3.5 animate-spin" : "size-3.5"}
+            className={cn(
+              "size-3.5",
+              rescoring ? "animate-spin" : "text-brand",
+            )}
           />
           {rescoring ? "Queueing…" : "Re-score"}
         </Button>
@@ -432,15 +459,53 @@ export function CandidateDetailSheet({
   onOpenChange,
   onOpenResume,
   resumePending,
+  canDecide,
 }: {
   candidate: JobPostCandidate | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onOpenResume: (candidateId: string) => void;
   resumePending: boolean;
+  /** False for VIEWER — see `CandidateTable`. */
+  canDecide: boolean;
 }) {
   const [retrying, startRetry] = useTransition();
   const [rescoring, startRescore] = useTransition();
+  const [deciding, startDecide] = useTransition();
+
+  // Raw transition flags are too brief to see — see `useVisiblePending`.
+  const showDeciding = useVisiblePending(deciding);
+  const showResume = useVisiblePending(resumePending);
+  const showRescoring = useVisiblePending(rescoring);
+  const showRetrying = useVisiblePending(retrying);
+
+  /**
+   * Records the hiring decision.
+   *
+   * Clicking the state a candidate is already in clears it, so the same button
+   * is both "shortlist" and "un-shortlist" — a separate undo control for a
+   * two-state toggle is more UI than the decision deserves.
+   */
+  function decide(candidateId: string, next: "SHORTLISTED" | "REJECTED") {
+    const target = candidate?.status === next ? "UNDECIDED" : next;
+
+    startDecide(async () => {
+      const result = await setCandidateDecisionAction(candidateId, target);
+      if (!result.ok) {
+        toast.error("Could not save that decision", {
+          description: result.error,
+        });
+        return;
+      }
+      toast.success(
+        target === "SHORTLISTED"
+          ? "Added to the shortlist"
+          : target === "REJECTED"
+            ? "Marked as rejected"
+            : "Decision cleared",
+      );
+    });
+  }
 
   function retry(candidateId: string) {
     startRetry(async () => {
@@ -497,7 +562,7 @@ export function CandidateDetailSheet({
                       variant="outline"
                       className="gap-1 border-brand/25 bg-brand/10 text-brand"
                     >
-                      <UserPlus className="size-3" />
+                      <UserPlus className="size-3 text-brand" />
                       Referral
                     </Badge>
                   ) : null}
@@ -570,7 +635,7 @@ export function CandidateDetailSheet({
 
               {candidate.status === "ERROR" ? (
                 <section className="rounded-lg border border-danger/25 bg-danger/5 p-4">
-                  <SectionHeading icon={AlertTriangle}>
+                  <SectionHeading icon={AlertTriangle} tone="text-warning">
                     Extraction failed
                   </SectionHeading>
                   <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
@@ -586,18 +651,19 @@ export function CandidateDetailSheet({
                     onClick={() => retry(candidate.id)}
                   >
                     <RefreshCw
-                      className={
-                        retrying ? "size-3.5 animate-spin" : "size-3.5"
-                      }
+                      className={cn(
+                        "size-3.5",
+                        showRetrying ? "animate-spin" : "text-brand",
+                      )}
                     />
-                    {retrying ? "Queueing…" : "Retry extraction"}
+                    {showRetrying ? "Queueing…" : "Retry extraction"}
                   </Button>
                 </section>
               ) : data ? (
                 <ExtractedPanel data={data} />
               ) : (
                 <section className="rounded-lg border border-dashed border-border bg-muted/30 p-4">
-                  <SectionHeading icon={Hourglass}>
+                  <SectionHeading icon={Hourglass} tone="text-muted-foreground">
                     {isRunning ? "Reading the resume…" : "Extraction pending"}
                   </SectionHeading>
                   <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
@@ -614,9 +680,10 @@ export function CandidateDetailSheet({
                       onClick={() => retry(candidate.id)}
                     >
                       <RefreshCw
-                        className={
-                          retrying ? "size-3.5 animate-spin" : "size-3.5"
-                        }
+                        className={cn(
+                          "size-3.5",
+                          showRetrying ? "animate-spin" : "text-brand",
+                        )}
                       />
                       Run extraction
                     </Button>
@@ -627,12 +694,12 @@ export function CandidateDetailSheet({
               {candidate.score !== null ? (
                 <ScorePanel
                   candidate={candidate}
-                  rescoring={rescoring}
+                  rescoring={showRescoring}
                   onRescore={() => rescore(candidate.id)}
                 />
               ) : (
                 <section className="rounded-lg border border-dashed border-border bg-muted/20 p-4">
-                  <SectionHeading icon={Hourglass}>
+                  <SectionHeading icon={Hourglass} tone="text-muted-foreground">
                     Scoring pending
                   </SectionHeading>
                   <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
@@ -649,9 +716,10 @@ export function CandidateDetailSheet({
                       onClick={() => rescore(candidate.id)}
                     >
                       <RefreshCw
-                        className={
-                          rescoring ? "size-3.5 animate-spin" : "size-3.5"
-                        }
+                        className={cn(
+                          "size-3.5",
+                          rescoring ? "animate-spin" : "text-brand",
+                        )}
                       />
                       Run scoring
                     </Button>
@@ -667,13 +735,73 @@ export function CandidateDetailSheet({
                 disabled={resumePending}
                 onClick={() => onOpenResume(candidate.id)}
               >
-                <FileText className="size-4" />
+                {/* Every action here swaps its own icon for a spinner rather
+                    than only greying out. A disabled button says "you cannot
+                    press this"; a spinning one says "it is working", and the
+                    resume fetch signs a URL round-trip that is slow enough for
+                    the difference to matter. */}
+                {showResume ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <FileText className="size-4 text-brand" />
+                )}
                 {resumePending ? "Opening…" : "Open resume"}
               </Button>
-              {/* TODO(shortlist): needs a status transition + audit trail. */}
-              <Button className="flex-1" disabled>
-                Move to shortlist
-              </Button>
+
+              {/* Hidden for VIEWER, and refused again in the action — the
+                  hiding is a courtesy, the server check is the control. */}
+              {canDecide ? (
+                <>
+                  <Button
+                    variant={
+                      candidate.status === "REJECTED"
+                        ? "destructive"
+                        : "outline"
+                    }
+                    className="flex-1"
+                    disabled={deciding}
+                    onClick={() => decide(candidate.id, "REJECTED")}
+                  >
+                    {showDeciding ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <ThumbsDown
+                        className={cn(
+                          "size-4",
+                          // Only tinted when it is not already the active
+                          // state: the destructive variant supplies its own
+                          // colour, and a second red on top muddies it.
+                          candidate.status !== "REJECTED" && "text-danger",
+                        )}
+                      />
+                    )}
+                    {candidate.status === "REJECTED" ? "Rejected" : "Reject"}
+                  </Button>
+                  <Button
+                    className="flex-1"
+                    disabled={deciding}
+                    onClick={() => decide(candidate.id, "SHORTLISTED")}
+                  >
+                    {showDeciding ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <Star
+                        className={cn(
+                          "size-4",
+                          // Filled once shortlisted, so the button reads as a
+                          // state rather than only as a thing to press.
+                          candidate.status === "SHORTLISTED"
+                            ? "fill-amber-300 text-amber-300"
+                            : "text-amber-300",
+                        )}
+                      />
+                    )}
+                    {candidate.status === "SHORTLISTED"
+                      ? "Shortlisted"
+                      : "Shortlist"}
+                  </Button>
+                </>
+              ) : null}
             </SheetFooter>
           </>
         ) : null}

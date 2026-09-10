@@ -92,7 +92,9 @@ async function main() {
   });
 
   console.log(`\nTarget domain: ${target}`);
-  console.log(`Inboxes: ${inboxes.length}, on the wrong domain: ${stale.length}\n`);
+  console.log(
+    `Inboxes: ${inboxes.length}, on the wrong domain: ${stale.length}\n`,
+  );
 
   if (stale.length === 0) {
     console.log(`Every alias is already on ${target}. Nothing to do.\n`);

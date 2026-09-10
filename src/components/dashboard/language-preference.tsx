@@ -98,7 +98,6 @@ export function LanguagePreference({
             </SelectContent>
           </Select>
         </div>
-
       </CardContent>
     </Card>
   );

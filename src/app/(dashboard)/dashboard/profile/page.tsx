@@ -104,7 +104,9 @@ export default async function ProfilePage() {
           <div className="flex items-center justify-between gap-2">
             <span className="text-muted-foreground">{t("joined")}</span>
             <span className="tabular-nums">
-              {member ? formatDate(member.createdAt.toISOString(), locale) : "—"}
+              {member
+                ? formatDate(member.createdAt.toISOString(), locale)
+                : "—"}
             </span>
           </div>
         </CardContent>

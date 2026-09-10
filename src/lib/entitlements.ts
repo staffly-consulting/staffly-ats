@@ -3,8 +3,10 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import {
   hasFeature,
+  needsFirstSubscription,
   quotaSnapshot,
   requiredTierFor,
+  subscriptionIsActive,
   type BillableOrg,
   type Feature,
   type QuotaSnapshot,
@@ -48,6 +50,7 @@ export async function getOrgBilling(orgId: string): Promise<OrgBilling | null> {
       cancelAtPeriodEnd: true,
       applicationsUsedInCycle: true,
       poolCycleAnchor: true,
+      requiresSubscription: true,
     },
   });
 
@@ -58,6 +61,42 @@ export async function getOrgBilling(orgId: string): Promise<OrgBilling | null> {
     poolCycleAnchor: org.poolCycleAnchor?.toISOString() ?? null,
     currentPeriodEnd: org.currentPeriodEnd?.toISOString() ?? null,
     quota: quotaSnapshot(org),
+  };
+}
+
+/**
+ * Whether the org may use the product at all, as opposed to a specific feature.
+ *
+ * `hasFeature` guards the three optional add-ons; this guards the paid product
+ * itself. Both read `subscriptionIsActive`, so a lapsed or never-subscribed org
+ * fails both — but they answer different questions and belong at different call
+ * sites. Creating a job post is not a "feature", it is the thing being sold.
+ *
+ * Returns the reason as well as the verdict so a caller can say "choose a plan"
+ * to a new org and "your subscription ended" to a lapsed one, rather than
+ * showing both of them the same wrong sentence.
+ */
+export async function checkSubscription(
+  orgId: string,
+): Promise<
+  | { active: true }
+  | { active: false; reason: "never-subscribed" | "lapsed" | "no-org" }
+> {
+  const org = await prisma.organization.findUnique({
+    where: { id: orgId },
+    select: {
+      planTier: true,
+      stripeSubscriptionStatus: true,
+      requiresSubscription: true,
+    },
+  });
+
+  if (!org) return { active: false, reason: "no-org" };
+  if (subscriptionIsActive(org)) return { active: true };
+
+  return {
+    active: false,
+    reason: needsFirstSubscription(org) ? "never-subscribed" : "lapsed",
   };
 }
 
@@ -85,7 +124,11 @@ export async function assertFeature(
 ): Promise<void> {
   const org = await prisma.organization.findUnique({
     where: { id: orgId },
-    select: { planTier: true, stripeSubscriptionStatus: true },
+    select: {
+      planTier: true,
+      stripeSubscriptionStatus: true,
+      requiresSubscription: true,
+    },
   });
 
   // No org row is a harder failure than a locked feature — treat it as locked
@@ -104,7 +147,11 @@ export async function checkFeature(
 ): Promise<boolean> {
   const org = await prisma.organization.findUnique({
     where: { id: orgId },
-    select: { planTier: true, stripeSubscriptionStatus: true },
+    select: {
+      planTier: true,
+      stripeSubscriptionStatus: true,
+      requiresSubscription: true,
+    },
   });
   return org ? hasFeature(org, feature) : false;
 }

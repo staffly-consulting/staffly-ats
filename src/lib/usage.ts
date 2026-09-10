@@ -79,6 +79,30 @@ export async function recordApplicationUsage(input: {
   });
 }
 
+/** Reasons an overage application is deliberately never billed. */
+export const BILLING_WAIVED = {
+  /** Accrued while the subscription was in its free trial. */
+  TRIAL: "TRIAL",
+} as const;
+
+/**
+ * Records that an overage application will never be billed.
+ *
+ * Without this, a waived application is indistinguishable from one whose meter
+ * event failed to report: both are `wasOverage: true` with a null event id, and
+ * the reconciliation query that finds unbilled revenue would count trial usage
+ * as money owed forever.
+ */
+export async function markMeterEventWaived(
+  ledgerEntryId: string,
+  reason: (typeof BILLING_WAIVED)[keyof typeof BILLING_WAIVED],
+): Promise<void> {
+  await prisma.usageLedgerEntry.update({
+    where: { id: ledgerEntryId },
+    data: { billingWaivedReason: reason },
+  });
+}
+
 /** Marks a ledger entry as successfully reported to Stripe. */
 export async function markMeterEventReported(
   ledgerEntryId: string,

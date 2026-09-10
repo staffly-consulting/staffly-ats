@@ -42,7 +42,7 @@ const wrapped = parse({
   data: {
     email_id: "msg_1",
     from: "ada@example.com",
-    to: ["acme-ab12cd34@mail.staffly.com"],
+    to: ["acme-ab12cd34@mail.stafflyconsulting.com"],
     subject: "Application",
     text: "CV attached",
     attachments: [
@@ -58,14 +58,14 @@ check("{ type, data } envelope parses", wrapped !== null);
 check("message id read", wrapped?.messageId === "msg_1");
 check(
   "recipient lowercased",
-  wrapped?.recipients[0] === "acme-ab12cd34@mail.staffly.com",
+  wrapped?.recipients[0] === "acme-ab12cd34@mail.stafflyconsulting.com",
 );
 check("attachment mapped", wrapped?.attachments.length === 1);
 
 const flat = parse({
   id: "msg_2",
   from: "b@example.com",
-  to: "alias@mail.staffly.com",
+  to: "alias@mail.stafflyconsulting.com",
   attachments: [],
 });
 check("flat (no data wrapper) envelope parses", flat !== null);
@@ -89,8 +89,11 @@ check(
 );
 check(
   "multiple recipients all captured",
-  parse({ id: "m", from: "a@b.com", to: ["one@x.com", "two@mail.staffly.com"] })
-    ?.recipients.length === 2,
+  parse({
+    id: "m",
+    from: "a@b.com",
+    to: ["one@x.com", "two@mail.stafflyconsulting.com"],
+  })?.recipients.length === 2,
 );
 check(
   "quoted display name stripped",
@@ -185,7 +188,7 @@ console.log("\n--- inline detection heuristic ---");
 const inlineByCid = parse({
   id: "m",
   from: "a@b.com",
-  to: "x@mail.staffly.com",
+  to: "x@mail.stafflyconsulting.com",
   attachments: [
     { filename: "sig.png", content_type: "image/png", content_id: "cid:123" },
     {

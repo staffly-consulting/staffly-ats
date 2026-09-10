@@ -155,7 +155,9 @@ for (const [language, messages] of catalogues) {
   const resolved = t("nav.jobPosts" as never) as string;
   check(
     `${language}: nav.jobPosts resolves`,
-    typeof resolved === "string" && resolved.length > 0 && !resolved.startsWith("nav."),
+    typeof resolved === "string" &&
+      resolved.length > 0 &&
+      !resolved.startsWith("nav."),
     resolved,
   );
 }
@@ -171,8 +173,16 @@ console.log("\n--- date formatting per locale ---");
       timeZone: "UTC",
     }).format(new Date(iso));
 
-  check("EN renders Latin script", /Sep/i.test(format(localeFor("EN"))), format(localeFor("EN")));
-  check("TH renders Thai script", /[฀-๿]/.test(format(localeFor("TH"))), format(localeFor("TH")));
+  check(
+    "EN renders Latin script",
+    /Sep/i.test(format(localeFor("EN"))),
+    format(localeFor("EN")),
+  );
+  check(
+    "TH renders Thai script",
+    /[฀-๿]/.test(format(localeFor("TH"))),
+    format(localeFor("TH")),
+  );
 
   // Guards the calendar decision in languages.ts: Thai months, GREGORIAN years,
   // so app dates match Stripe's invoices. Dropping the -u-ca-gregory extension

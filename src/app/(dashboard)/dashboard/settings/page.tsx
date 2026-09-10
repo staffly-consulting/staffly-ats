@@ -9,6 +9,7 @@ import { Building2, Mail, Users } from "lucide-react";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatTile } from "@/components/dashboard/stat-tile";
 import { BillingPanel } from "@/components/dashboard/billing-panel";
+import { CheckoutResultBanner } from "@/components/dashboard/checkout-result-banner";
 import { UniversityManager } from "@/components/dashboard/university-manager";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,7 +25,7 @@ import { requireOrgContext } from "@/lib/auth";
 import { getEmailInbox } from "@/lib/email-inbox";
 import { checkFeature, getOrgBilling } from "@/lib/entitlements";
 import { getOrgSettings } from "@/lib/org";
-import { FEATURES } from "@/lib/plans";
+import { FEATURES, PLANS } from "@/lib/plans";
 import { isStripeConfigured } from "@/lib/stripe";
 import { listUniversityPreferences } from "@/lib/universities";
 import { formatDate } from "@/lib/utils";
@@ -44,8 +45,14 @@ export const dynamic = "force-dynamic";
  * Clerk owns it: editing here would be overwritten by the next
  * `organization.updated` webhook.
  */
-export default async function SettingsPage() {
+export default async function SettingsPage({
+  searchParams,
+}: {
+  /** `?checkout=success|cancelled`, set by Stripe's return URLs. */
+  searchParams: Promise<{ checkout?: string }>;
+}) {
   const { orgId } = await requireOrgContext();
+  const { checkout } = await searchParams;
 
   const [org, inbox, universities, billing, canManageUniversities] =
     await Promise.all([
@@ -64,6 +71,16 @@ export default async function SettingsPage() {
         title="Settings"
         description="Organization-level configuration. Sign-in and membership are managed from your account menu; everything below applies to this organization."
       />
+
+      {billing ? (
+        <CheckoutResultBanner
+          outcome={checkout}
+          // Stripe redirects on payment; the webhook writes the subscription.
+          // The browser routinely wins that race.
+          awaitingConfirmation={billing.stripeSubscriptionId === null}
+          planLabel={PLANS[billing.planTier].label}
+        />
+      ) : null}
 
       <div className="grid gap-3 sm:grid-cols-3">
         <StatTile label="Members" value={org.counts.members} icon={Users} />
@@ -91,8 +108,15 @@ export default async function SettingsPage() {
         <CardHeader>
           <CardTitle className="text-base">Organization</CardTitle>
           <CardDescription>
-            Change your organization name and membership from the organization
-            switcher in the sidebar.
+            Manage members from the Team page. To switch to another
+            organization, go to{" "}
+            <Link
+              href="/dashboard/select-org"
+              className="underline underline-offset-2 hover:text-foreground"
+            >
+              choose an organization
+            </Link>
+            .
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">

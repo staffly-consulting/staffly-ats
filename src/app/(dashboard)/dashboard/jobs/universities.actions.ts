@@ -1,7 +1,8 @@
 "use server";
 
-import { requireOrgContext } from "@/lib/auth";
+import { permissionError, requireOrgContext } from "@/lib/auth";
 import { assertFeature } from "@/lib/entitlements";
+import { PERMISSIONS } from "@/lib/permissions";
 import { FEATURES } from "@/lib/plans";
 import {
   createUniversityPreference,
@@ -22,7 +23,11 @@ export type CreateUniversityResult =
 export async function createUniversityPreferenceAction(
   input: unknown,
 ): Promise<CreateUniversityResult> {
-  const { orgId } = await requireOrgContext();
+  const context = await requireOrgContext();
+  const { orgId } = context;
+
+  const denied = await permissionError(context, PERMISSIONS.UNIVERSITY_WRITE);
+  if (denied) return denied;
 
   try {
     await assertFeature(orgId, FEATURES.UNIVERSITY_PREFERENCES);

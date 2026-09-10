@@ -3,7 +3,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import {
+  Archive,
   ArrowLeft,
+  Download,
   Inbox,
   Pencil,
   Target,
@@ -12,12 +14,14 @@ import {
 } from "lucide-react";
 
 import { CandidateTable } from "@/components/dashboard/candidate-table";
+import { JobLifecycleActions } from "@/components/dashboard/job-lifecycle-actions";
 import { CriteriaSummary } from "@/components/dashboard/criteria-summary";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatTile } from "@/components/dashboard/stat-tile";
 import { JobStatusPill } from "@/components/dashboard/status-pill";
 import { Button } from "@/components/ui/button";
-import { requireOrgContext } from "@/lib/auth";
+import { checkPermission, requireOrgContext } from "@/lib/auth";
+import { PERMISSIONS } from "@/lib/permissions";
 import { getJobPost } from "@/lib/job-posts";
 import {
   getCandidateFacets,
@@ -48,6 +52,13 @@ function readFilters(
     minScore: Number.isFinite(minScore) && minScore > 0 ? minScore : undefined,
     referralOnly: one("referral") === "1",
     flaggedOnly: one("flagged") === "1",
+    unreadOnly: one("unread") === "1",
+    decision:
+      one("decision") === "SHORTLISTED" ||
+      one("decision") === "REJECTED" ||
+      one("decision") === "undecided"
+        ? (one("decision") as "SHORTLISTED" | "REJECTED" | "undecided")
+        : undefined,
     university: one("university") || undefined,
     nationality: one("nationality") || undefined,
   };
@@ -69,14 +80,39 @@ export default async function JobCandidatesPage({
   searchParams,
 }: PageProps) {
   const { jobId } = await params;
-  const filters = readFilters(await searchParams);
-  const { orgId } = await requireOrgContext();
+  const resolvedSearchParams = await searchParams;
+  const filters = readFilters(resolvedSearchParams);
+
+  // Rebuilt from the SAME params the table was filtered by, so the spreadsheet
+  // and the screen can never disagree. Only the keys the export understands are
+  // forwarded; anything else on the URL is dropped rather than passed through.
+  const exportQuery = new URLSearchParams();
+  for (const key of [
+    "minScore",
+    "referral",
+    "flagged",
+    "university",
+    "nationality",
+    "decision",
+    "unread",
+  ]) {
+    const value = resolvedSearchParams[key];
+    const single = Array.isArray(value) ? value[0] : value;
+    if (single) exportQuery.set(key, single);
+  }
+  const exportHref = `/api/job-posts/${jobId}/export${
+    exportQuery.size > 0 ? `?${exportQuery}` : ""
+  }`;
+  const context = await requireOrgContext();
+  const { orgId } = context;
 
   // Scoped by org inside the query: a job post id from another tenant returns
   // null and 404s rather than rendering.
-  const [job, allUniversities] = await Promise.all([
+  const [job, allUniversities, canWrite, canExport] = await Promise.all([
     getJobPost(orgId, jobId),
     listUniversityPreferences(orgId),
+    checkPermission(context, PERMISSIONS.JOB_POST_WRITE),
+    checkPermission(context, PERMISSIONS.CANDIDATE_EXPORT),
   ]);
 
   // `getJobPost` filters on orgId, so another tenant's id resolves to null and
@@ -116,16 +152,45 @@ export default async function JobCandidatesPage({
         description={job.description ?? "No description yet."}
         actions={
           <>
-            <Button asChild variant="outline">
-              <Link href={`/dashboard/jobs/${job.id}/edit`}>
-                <Pencil className="size-4" />
-                Edit
-              </Link>
-            </Button>
-            <Button disabled>Export shortlist</Button>
+            {canWrite ? (
+              <>
+                <Button asChild variant="outline">
+                  <Link href={`/dashboard/jobs/${job.id}/edit`}>
+                    <Pencil className="size-4" />
+                    Edit
+                  </Link>
+                </Button>
+                <JobLifecycleActions jobPostId={job.id} status={job.status} />
+              </>
+            ) : null}
+            {canExport ? (
+              <Button asChild>
+                {/* A plain link, so the browser's own download handling takes
+                    over. `exportHref` carries the page's current filters, so
+                    the file is exactly what is on screen. */}
+                <a href={exportHref}>
+                  <Download className="size-4" />
+                  Export shortlist
+                </a>
+              </Button>
+            ) : null}
           </>
         }
       />
+
+      {/* Archived posts stay reachable by direct link so they can be restored,
+          but they are gone from every listing — without this banner the page
+          looks identical to a live one. */}
+      {job.status === "ARCHIVED" ? (
+        <div className="flex items-start gap-2 rounded-lg border border-border bg-muted/40 p-3 text-xs leading-relaxed text-muted-foreground">
+          <Archive className="mt-0.5 size-3.5 shrink-0" />
+          <span>
+            This job post is archived. It is hidden from the dashboard and
+            cannot receive new candidates, but nothing has been deleted —
+            restore it to bring it back.
+          </span>
+        </div>
+      ) : null}
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
         <span>Created {formatDate(job.createdAt)}</span>
@@ -151,7 +216,7 @@ export default async function JobCandidatesPage({
         />
         <StatTile
           label="Above threshold"
-          value={job.stats.shortlistedCount}
+          value={job.stats.strongMatchCount}
           hint={`Scoring ${SCORE_THRESHOLDS.strong} or higher`}
           icon={Target}
           valueClassName="text-success"
@@ -194,6 +259,7 @@ export default async function JobCandidatesPage({
           ) : null}
         </div>
         <CandidateTable
+          canDecide={canWrite}
           candidates={candidates}
           universities={facets.universities}
           nationalities={facets.nationalities}

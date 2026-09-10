@@ -8,7 +8,11 @@ import type {
 } from "@clerk/nextjs/server";
 import { Webhook } from "svix";
 
-import { mapClerkRole } from "@/lib/auth";
+import {
+  STAFFLY_ROLE_METADATA_KEY,
+  parseRole,
+  resolveMemberRole,
+} from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { deleteOrgObjects } from "@/lib/storage";
 
@@ -19,8 +23,9 @@ import { deleteOrgObjects } from "@/lib/storage";
  * (organizations and their members) into our own tables so that job posts and
  * candidates can carry foreign keys.
  *
- * Handled: organization.created / .updated / .deleted, user.updated, and
- * organizationMembership.created / .updated / .deleted.
+ * Handled: organization.created / .updated / .deleted, user.updated,
+ * organizationMembership.created / .updated / .deleted, and
+ * organizationInvitation.accepted.
  *
  * Response contract, per Clerk's webhook spec:
  *   2xx — delivered; Clerk stops retrying.
@@ -178,18 +183,92 @@ async function handleEvent(event: WebhookEvent): Promise<void> {
       const data = event.data;
       const orgId = data.organization.id;
       const clerkUserId = data.public_user_data.user_id;
-      const role = mapClerkRole(data.role);
       // `identifier` is the user's primary email address for email-based sign-ups.
       const email = data.public_user_data.identifier;
       const name = memberName(data);
 
       await ensureOrganization(data.organization);
 
+      // The role needs the CURRENT row to be resolved, because `org:member` is
+      // ambiguous between RECRUITER and VIEWER — see `resolveMemberRole`. Read
+      // first, then decide, rather than mapping the Clerk role blindly and
+      // downgrading every viewer this event arrives for.
+      const existing = await prisma.orgMember.findUnique({
+        where: { orgId_clerkUserId: { orgId, clerkUserId } },
+        select: { role: true },
+      });
+
+      const role = resolveMemberRole(data.role, existing?.role ?? null);
+
       await prisma.orgMember.upsert({
         where: { orgId_clerkUserId: { orgId, clerkUserId } },
         create: { orgId, clerkUserId, role, email, name },
         update: { role, email, name },
       });
+      return;
+    }
+
+    case "organizationInvitation.accepted": {
+      const data = event.data;
+      const orgId = data.organization_id;
+      const clerkUserId = data.user_id;
+
+      // The whole point of this handler. Clerk's free tier has two org roles
+      // and Staffly has three, so the role an admin actually chose travels in
+      // the invitation's metadata rather than in the Clerk role — see
+      // `CLERK_ROLE`. Without this event, every invited VIEWER would land as a
+      // RECRUITER with write access.
+      const role = parseRole(data.public_metadata?.[STAFFLY_ROLE_METADATA_KEY]);
+
+      if (!role) {
+        // An invitation created before this mechanism existed, or by hand in
+        // the Clerk dashboard. The membership event will seed a role; nothing
+        // to correct here.
+        console.info(
+          `[clerk-webhook] organizationInvitation.accepted ${data.id}: no ${STAFFLY_ROLE_METADATA_KEY} metadata; leaving role to the membership event`,
+        );
+        return;
+      }
+
+      // This event can beat `organizationMembership.created`, in which case the
+      // organization row may not exist yet and the foreign key would fail. The
+      // payload carries enough to create it; when it does not, the membership
+      // event will, and an admin can correct the role on the Team page.
+      if (data.public_organization_data?.name) {
+        await prisma.organization.upsert({
+          where: { id: orgId },
+          create: { id: orgId, name: data.public_organization_data.name },
+          update: {},
+        });
+      } else if (
+        (await prisma.organization.count({ where: { id: orgId } })) === 0
+      ) {
+        console.warn(
+          `[clerk-webhook] organizationInvitation.accepted ${data.id}: organization ${orgId} not synced yet; ${data.email_address} will default to RECRUITER until an admin sets their role`,
+        );
+        return;
+      }
+
+      // Authoritative for role. `update` sets it unconditionally: this event
+      // states what an admin actually chose, which outranks anything the
+      // ambiguous membership event may already have written.
+      await prisma.orgMember.upsert({
+        where: { orgId_clerkUserId: { orgId, clerkUserId } },
+        create: {
+          orgId,
+          clerkUserId,
+          role,
+          email: data.email_address,
+          // The invitation carries no name; `user.updated` and the membership
+          // event both supply one later.
+          name: null,
+        },
+        update: { role },
+      });
+
+      console.info(
+        `[clerk-webhook] ${data.email_address} joined org ${orgId} as ${role}`,
+      );
       return;
     }
 

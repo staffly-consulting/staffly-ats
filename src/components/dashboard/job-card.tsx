@@ -54,7 +54,9 @@ export function JobCard({
           <JobStatusPill status={job.status} />
         </div>
         <CardDescription className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-          <span>{t("created", { date: formatDate(job.createdAt, locale) })}</span>
+          <span>
+            {t("created", { date: formatDate(job.createdAt, locale) })}
+          </span>
           {job.createdByName ? <span>by {job.createdByName}</span> : null}
           {job.referralPriorityEnabled ? (
             <span className="inline-flex items-center gap-1 text-brand">
@@ -84,7 +86,7 @@ export function JobCard({
         </div>
         <div>
           <div className="text-xl font-semibold text-success tabular-nums">
-            {stats.shortlistedCount}
+            {stats.strongMatchCount}
           </div>
           <div className="text-xs text-muted-foreground">
             {t("aboveThreshold")}

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import { OrganizationSwitcher, UserButton } from "@clerk/nextjs";
+import { UserButton } from "@clerk/nextjs";
 import { Menu, Sparkles, UserRound } from "lucide-react";
 import { useTranslations } from "next-intl";
 
@@ -20,22 +20,16 @@ import {
 import { cn } from "@/lib/utils";
 
 /**
- * The sidebar no longer takes org or user props: Clerk's `OrganizationSwitcher`
- * and `UserButton` read the active session directly on the client, which keeps
- * the switcher's state and the session's state from drifting apart.
+ * The sidebar takes no org or user props: Clerk's `UserButton` reads the active
+ * session directly on the client, so its state cannot drift from the session's.
  *
- * Switching org triggers a full navigation to /dashboard so every server
- * component re-runs under the new org claim. Without that, cached RSC payloads
- * from the previous tenant would stay on screen.
+ * There is deliberately NO organization switcher here. Switching tenants from a
+ * always-visible dropdown put a destructive-feeling action one stray click from
+ * every page, and the active org is already named in the dashboard header and
+ * on Settings. Users who genuinely belong to more than one organization switch
+ * at `/dashboard/select-org`, which is also where `requireOrgContext()` sends
+ * anyone whose session has no active org.
  */
-
-const switcherAppearance = {
-  elements: {
-    rootBox: "w-full",
-    organizationSwitcherTrigger:
-      "w-full justify-between rounded-md px-2 py-2 hover:bg-sidebar-accent",
-  },
-} as const;
 
 function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
   const t = useTranslations("nav");
@@ -45,14 +39,6 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
       <div className="px-1 pt-1">
         <StafflyLogo />
       </div>
-
-      <OrganizationSwitcher
-        hidePersonal
-        afterCreateOrganizationUrl="/dashboard"
-        afterSelectOrganizationUrl="/dashboard"
-        afterLeaveOrganizationUrl="/dashboard/select-org"
-        appearance={switcherAppearance}
-      />
 
       <Separator />
 

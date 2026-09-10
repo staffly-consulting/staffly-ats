@@ -1,6 +1,11 @@
 import { inngest, type StafflyEvents } from "@/inngest/client";
+import { prisma } from "@/lib/prisma";
 import { isStripeConfigured, meterEventName, stripe } from "@/lib/stripe";
-import { markMeterEventReported } from "@/lib/usage";
+import {
+  BILLING_WAIVED,
+  markMeterEventReported,
+  markMeterEventWaived,
+} from "@/lib/usage";
 
 /**
  * `billing/overage-recorded` → one Stripe meter event.
@@ -47,6 +52,33 @@ export const reportOverageFunction = inngest.createFunction(
         `[report-overage] org ${orgId} has no stripeCustomerId; ledger entry ${ledgerEntryId} left unreported`,
       );
       return { skipped: "no-stripe-customer", ledgerEntryId };
+    }
+
+    // Trial usage is never billed. Checked here rather than at ingestion so the
+    // status is the one true at report time, and because ingestion must not
+    // take a billing decision it would have to re-take later anyway.
+    //
+    // The application still counts against the pool and still shows in usage —
+    // a trialist should see the quota working. It just never becomes money. The
+    // alternative, metering through the trial, means a customer who forwards a
+    // busy careers inbox on day one meets a large overage line on the invoice
+    // that converts them, which is the worst possible moment to surprise them.
+    const status = await step.run("read-subscription-status", async () => {
+      const org = await prisma.organization.findUnique({
+        where: { id: orgId },
+        select: { stripeSubscriptionStatus: true },
+      });
+      return org?.stripeSubscriptionStatus ?? null;
+    });
+
+    if (status === "trialing") {
+      await step.run("waive-trial-overage", () =>
+        markMeterEventWaived(ledgerEntryId, BILLING_WAIVED.TRIAL),
+      );
+      logger.info(
+        `[report-overage] org ${orgId} is in trial; ledger entry ${ledgerEntryId} waived rather than billed`,
+      );
+      return { skipped: "trialing", ledgerEntryId };
     }
 
     const meterEventId = await step.run("send-meter-event", async () => {

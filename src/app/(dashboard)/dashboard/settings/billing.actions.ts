@@ -3,7 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { getCurrentMember, requireOrgContext } from "@/lib/auth";
+import {
+  getCurrentMember,
+  permissionError,
+  requireOrgContext,
+} from "@/lib/auth";
 import {
   cancelSubscription,
   createCheckoutSession,
@@ -11,6 +15,7 @@ import {
   resumeSubscription,
 } from "@/lib/billing-checkout";
 import { getOrgSettings } from "@/lib/org";
+import { PERMISSIONS } from "@/lib/permissions";
 import { PLANS, SELF_SERVE_TIERS } from "@/lib/plans";
 import { isStripeConfigured } from "@/lib/stripe";
 import type { BillingInterval, PlanTier } from "@prisma/client";
@@ -42,6 +47,9 @@ export async function startCheckoutAction(
   intervalInput: unknown,
 ): Promise<BillingActionResult> {
   const context = await requireOrgContext();
+
+  const denied = await permissionError(context, PERMISSIONS.BILLING_MANAGE);
+  if (denied) return denied;
 
   // The all-or-nothing gate. A Checkout that works while the webhook secret is
   // missing would charge a customer whose plan then never upgrades — worse than
@@ -92,7 +100,11 @@ export async function startCheckoutAction(
 export async function cancelSubscriptionAction(): Promise<
   { ok: true; endsAt: string } | { ok: false; error: string }
 > {
-  const { orgId } = await requireOrgContext();
+  const context = await requireOrgContext();
+  const { orgId } = context;
+
+  const denied = await permissionError(context, PERMISSIONS.BILLING_MANAGE);
+  if (denied) return denied;
 
   if (!isStripeConfigured()) {
     return { ok: false, error: "Billing is not fully configured yet." };
@@ -117,7 +129,11 @@ export async function cancelSubscriptionAction(): Promise<
 export async function resumeSubscriptionAction(): Promise<
   { ok: true } | { ok: false; error: string }
 > {
-  const { orgId } = await requireOrgContext();
+  const context = await requireOrgContext();
+  const { orgId } = context;
+
+  const denied = await permissionError(context, PERMISSIONS.BILLING_MANAGE);
+  if (denied) return denied;
 
   if (!isStripeConfigured()) {
     return { ok: false, error: "Billing is not fully configured yet." };
@@ -134,7 +150,11 @@ export async function resumeSubscriptionAction(): Promise<
 }
 
 export async function openBillingPortalAction(): Promise<BillingActionResult> {
-  const { orgId } = await requireOrgContext();
+  const context = await requireOrgContext();
+  const { orgId } = context;
+
+  const denied = await permissionError(context, PERMISSIONS.BILLING_MANAGE);
+  if (denied) return denied;
 
   if (!isStripeConfigured()) {
     return { ok: false, error: "Billing is not fully configured yet." };

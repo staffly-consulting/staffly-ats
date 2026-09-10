@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { auth, clerkClient } from "@clerk/nextjs/server";
 
 import { prisma } from "@/lib/prisma";
+import { mapClerkRole, roleCan, type Permission } from "@/lib/permissions";
 import type { OrgMember, OrgRole } from "@prisma/client";
 
 /**
@@ -58,24 +59,12 @@ export async function getOrgContext(): Promise<OrgContext | null> {
 }
 
 /**
- * Maps a Clerk organization role to our `OrgRole` enum.
- *
- * Clerk ships `org:admin` and `org:member` by default and lets you define more.
- * Anything we do not recognise falls back to RECRUITER — the least privileged
- * role that can still do the job — rather than ADMIN.
+ * Re-exported so the many existing callers of `mapClerkRole` keep working. The
+ * definition moved to `lib/permissions.ts` to sit beside its inverse,
+ * `CLERK_ROLE`, and to stay importable from a pure context — see the note
+ * there.
  */
-export function mapClerkRole(clerkRole: string | null | undefined): OrgRole {
-  switch (clerkRole) {
-    case "org:admin":
-    case "admin":
-      return "ADMIN";
-    case "org:viewer":
-    case "viewer":
-      return "VIEWER";
-    default:
-      return "RECRUITER";
-  }
-}
+export { mapClerkRole } from "@/lib/permissions";
 
 /* -------------------------------------------------------------------------- */
 /* Just-in-time tenant provisioning                                            */
@@ -201,4 +190,113 @@ export async function getCurrentMember(
     context.clerkUserId,
     context.clerkRole,
   );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Authorization                                                               */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The caller's role in the active organization.
+ *
+ * Read from our own `OrgMember` mirror rather than from the session claim, and
+ * the difference matters when a role is *revoked*. Clerk's `org_role` claim is
+ * baked into a JWT that lives up to a minute; the `organizationMembership.updated`
+ * webhook lands in well under that. Trusting the claim would leave a demoted
+ * admin holding admin rights for the remainder of their token's life — a window
+ * an angry departing employee is perfectly capable of using.
+ *
+ * Falls back to the session claim only when there is no member row at all,
+ * which happens for a user with no email address (see `provisionTenant`). That
+ * user is a legitimate member; they just have no row to read a role from.
+ */
+export async function getCurrentRole(context: OrgContext): Promise<OrgRole> {
+  const member = await prisma.orgMember.findUnique({
+    where: {
+      orgId_clerkUserId: {
+        orgId: context.orgId,
+        clerkUserId: context.clerkUserId,
+      },
+    },
+    select: { role: true },
+  });
+
+  return member?.role ?? mapClerkRole(context.clerkRole);
+}
+
+/** Non-throwing check, for deciding what to render. */
+export async function checkPermission(
+  context: OrgContext,
+  permission: Permission,
+): Promise<boolean> {
+  return roleCan(await getCurrentRole(context), permission);
+}
+
+export class PermissionDeniedError extends Error {
+  constructor(
+    readonly permission: Permission,
+    readonly role: OrgRole,
+  ) {
+    super(PERMISSION_DENIED_MESSAGE[permission]);
+    this.name = "PermissionDeniedError";
+  }
+}
+
+/**
+ * What the user is told when a permission check fails.
+ *
+ * Names the action and points at the person who can grant it. "Forbidden" makes
+ * the user think the app is broken; "ask an admin" makes it a two-minute
+ * conversation instead of a support ticket. This mirrors the reasoning behind
+ * `FeatureLockedError` naming the plan required.
+ */
+const PERMISSION_DENIED_MESSAGE: Record<Permission, string> = {
+  JOB_POST_WRITE:
+    "Your role does not allow creating or editing job posts. Ask an admin in your organization to change your role.",
+  CANDIDATE_WRITE:
+    "Your role does not allow changing candidates. Ask an admin in your organization to change your role.",
+  CANDIDATE_EXPORT:
+    "Your role does not allow exporting candidate data. Ask an admin in your organization to change your role.",
+  UNIVERSITY_WRITE:
+    "Your role does not allow editing university preferences. Ask an admin in your organization to change your role.",
+  INBOX_MANAGE:
+    "Only admins can change the email connection. Ask an admin in your organization.",
+  BILLING_MANAGE:
+    "Only admins can manage billing for this organization. Ask an admin in your organization.",
+  MEMBER_MANAGE:
+    "Only admins can manage members. Ask an admin in your organization.",
+};
+
+/**
+ * Throws unless the caller holds the permission.
+ *
+ * Call this at the point of mutation — inside the server action or route
+ * handler — not only where a button is rendered. Every action in this codebase
+ * is reachable by POSTing to its endpoint directly, so a hidden button is a
+ * courtesy to the user rather than a control.
+ */
+export async function requirePermission(
+  context: OrgContext,
+  permission: Permission,
+): Promise<OrgRole> {
+  const role = await getCurrentRole(context);
+  if (!roleCan(role, permission)) {
+    throw new PermissionDeniedError(permission, role);
+  }
+  return role;
+}
+
+/**
+ * `requirePermission` in the shape every server action here already returns.
+ *
+ * Saves each call site from repeating the same try/catch to turn the throw into
+ * `{ ok: false, error }`. Returns null when permitted.
+ */
+export async function permissionError(
+  context: OrgContext,
+  permission: Permission,
+): Promise<{ ok: false; error: string } | null> {
+  const role = await getCurrentRole(context);
+  if (roleCan(role, permission)) return null;
+  return { ok: false, error: PERMISSION_DENIED_MESSAGE[permission] };
 }

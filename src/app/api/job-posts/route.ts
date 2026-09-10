@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 
-import { getCurrentMember, getOrgContext } from "@/lib/auth";
-import { checkFeature } from "@/lib/entitlements";
-import { FEATURES } from "@/lib/plans";
+import { checkPermission, getCurrentMember, getOrgContext } from "@/lib/auth";
+import { checkFeature, checkSubscription } from "@/lib/entitlements";
+import { PERMISSIONS } from "@/lib/permissions";
+import { FEATURES, TRIAL_PERIOD_DAYS } from "@/lib/plans";
 import { createJobPost } from "@/lib/job-posts";
 import { jobPostApiSchema } from "@/lib/validations/job-post";
 
@@ -29,6 +30,19 @@ export async function POST(request: Request) {
   }
   const { orgId } = context;
 
+  // 403, not 401: they are authenticated and in the right org, their role just
+  // does not permit this. Checked before parsing so a VIEWER gets the same
+  // answer whatever they send.
+  if (!(await checkPermission(context, PERMISSIONS.JOB_POST_WRITE))) {
+    return NextResponse.json(
+      {
+        error:
+          "Your role does not allow creating job posts. Ask an admin in your organization to change your role.",
+      },
+      { status: 403 },
+    );
+  }
+
   let payload: unknown;
   try {
     payload = await request.json();
@@ -48,6 +62,28 @@ export async function POST(request: Request) {
         })),
       },
       { status: 422 },
+    );
+  }
+
+  // The paywall. There is no free tier, so an org with no live subscription
+  // cannot create the thing that receives applications — which is what makes
+  // "no free tier" true in practice rather than only on the pricing page.
+  //
+  // Enforced on creation only. An org whose subscription lapses keeps its
+  // existing posts and candidates: they paid for that data, and deleting or
+  // hiding it would be a punishment rather than a paywall.
+  const subscription = await checkSubscription(orgId);
+  if (!subscription.active) {
+    return NextResponse.json(
+      {
+        error:
+          subscription.reason === "never-subscribed"
+            ? `Choose a plan to create job posts. Your first ${TRIAL_PERIOD_DAYS} days are free and you can cancel within them without being charged.`
+            : "Your subscription is no longer active, so new job posts cannot be created. Reactivate it in Settings — your existing posts and candidates are untouched.",
+        // Lets the client route straight to Checkout instead of guessing.
+        upgradeUrl: "/dashboard/settings",
+      },
+      { status: 403 },
     );
   }
 

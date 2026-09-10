@@ -47,6 +47,7 @@ loads it explicitly), so there is only one file to fill in.
 | `npm run dev:webhooks`    | Relay Clerk events to the local handler                         |
 | `npm run build`           | Production build (works without credentials)                    |
 | `npm run db:deploy`       | Apply migrations — use this against Supabase                    |
+| `npm run test:rls`        | Assert no table in `public` is internet-reachable (needs a DB)  |
 | `npm run db:migrate`      | Create a new migration from schema changes                      |
 | `npm run db:studio`       | Prisma Studio                                                   |
 | `npm run lint`            | ESLint                                                          |
@@ -110,6 +111,17 @@ npx clerk@latest config pull                # inspect current instance config
    - `organizationMembership.created`
    - `organizationMembership.updated`
    - `organizationMembership.deleted`
+   - `organizationInvitation.accepted`
+
+   > `organizationInvitation.accepted` is **required for the Viewer role to
+   > work**. Clerk's free tier has only two organization roles (`org:admin`,
+   > `org:member`), so Staffly's three roles live in `OrgMember.role` and the
+   > role an admin actually picked travels in the invitation's public metadata.
+   > This event is the only place that metadata can be read back and applied.
+   >
+   > Without it nothing errors — invited Viewers silently arrive as Recruiters,
+   > with write access. If you see that, this subscription is the first thing to
+   > check. See `CLERK_ROLE` in `src/lib/permissions.ts`.
 
 4. **Connect Clerk to Supabase.** Enable the Supabase integration on the Clerk
    side; it adds the `"role": "authenticated"` claim to session tokens and gives
@@ -159,10 +171,18 @@ Applications reach Staffly by forwarding, not OAuth. Each org gets a private
 alias on a mail subdomain; whatever arrives there belongs to that org.
 
 1. **Add and verify the mail domain** in Resend — the subdomain the aliases live
-   on, e.g. `mail.staffly.com`. Set the DNS records Resend gives you (MX for
-   inbound, plus SPF/DKIM). Put the same domain in `INBOUND_EMAIL_DOMAIN`; it
-   must match, or generated aliases will point somewhere Resend does not
-   receive.
+   on: `mail.stafflyconsulting.com`. Resend then shows the exact DNS records to
+   create at whoever hosts DNS for `stafflyconsulting.com` — an `MX` on the
+   `mail` subdomain for inbound, plus `SPF` and `DKIM` for sending. Do not copy
+   those values from here or from the docs: the DKIM key is generated per domain,
+   so the dashboard is the only authoritative source. Put the same domain in
+   `INBOUND_EMAIL_DOMAIN`; it must match, or generated aliases will point
+   somewhere Resend does not receive.
+
+   The `mail` subdomain is deliberately separate from `recruit.` where the app is
+   served. Adding `MX` to a subdomain does not affect the apex domain's mail, so
+   existing `@stafflyconsulting.com` addresses keep working untouched.
+
 2. **Enable inbound parsing** for that domain and route it to
    `https://<your-domain>/api/webhooks/resend-inbound`. Aliases are generated
    per org, so the route needs to accept the whole domain, not a fixed address.
@@ -196,10 +216,10 @@ set `INNGEST_EVENT_KEY` and `INNGEST_SIGNING_KEY`.
 There are two paths to the database, and they are protected differently. Getting
 this backwards is the most likely way to leak data between tenants.
 
-| Path                     | Connects as     | RLS?         | Protected by                      |
-| ------------------------ | --------------- | ------------ | --------------------------------- |
-| Prisma (`lib/prisma.ts`) | database owner  | **bypassed** | the `where orgId` in every query  |
-| Supabase client          | `authenticated` | **enforced** | the policies in the RLS migration |
+| Path                     | Connects as     | RLS?         | Protected by                       |
+| ------------------------ | --------------- | ------------ | ---------------------------------- |
+| Prisma (`lib/prisma.ts`) | database owner  | **bypassed** | the `where orgId` in every query   |
+| Supabase client          | `authenticated` | **enforced** | no table grants at all — see below |
 
 - Prisma is the primary query layer. Because the owner role bypasses RLS, every
   query must scope itself. `src/lib/job-posts.ts` takes `orgId` as a required
@@ -208,7 +228,11 @@ this backwards is the most likely way to leak data between tenants.
   reads it from the Clerk session — never from a route param or request body.
   A job post id from another tenant returns `null` and 404s.
 - The Supabase client is for Storage and, later, realtime. It forwards the Clerk
-  session JWT, so RLS applies.
+  session JWT, so RLS applies — but as of the `rls_hardening` migration the
+  `authenticated` role holds no table grants in `public`, so table access over
+  PostgREST is refused before a policy is consulted. Nothing in `src/` uses that
+  client today. See **No PostgREST surface at all** below before granting
+  anything back.
 
 ### Tenant provisioning: two writers, one authority
 
@@ -237,29 +261,75 @@ consulted when a row is genuinely absent.
 
 ### RLS policies
 
-`prisma/migrations/20260822120100_rls_policies/migration.sql` enables RLS on all
-eight tenant tables and adds one `FOR ALL` policy each (both `USING` and
+`prisma/migrations/20260822120100_rls_policies/migration.sql` enables RLS on the
+original eight tenant tables and adds one `FOR ALL` policy each (both `USING` and
 `WITH CHECK`). All of them route through `public.staffly_org_id()`, which reads
 the org from the Clerk JWT — accepting both the current `o.id` claim and the
 legacy flat `org_id` claim. With no active organization it returns `NULL`, and
-every policy fails closed.
+every policy fails closed. Two later migrations extend the same pattern to the
+other two tables: `usage_ledger_entries` (billing) and `user_preferences`, which
+is scoped to the JWT `sub` rather than the org because a preference follows a
+person across organizations.
 
 `referrals` and `candidate_scores` have no `orgId` column, so they derive tenancy
 through the parent candidate.
 
-**Verifying:** `scripts/rls-test.sql` is a self-contained harness that seeds two
-tenants and asserts isolation, WITH CHECK rejection of cross-tenant inserts,
-fail-closed behaviour with no org, and that `anon` has no privileges. Against a
-throwaway Postgres:
+### No PostgREST surface at all
+
+`prisma/migrations/20260909120000_rls_hardening/migration.sql` revokes every
+table grant in `public` from `anon` and `authenticated`, and flips the schema's
+default privileges so the next table Prisma creates is born unreachable instead
+of born exposed.
+
+This came out of a Supabase advisor warning. The ten application tables were
+already covered; the table it was pointing at was `_prisma_migrations`, which
+Prisma creates for itself and no migration had ever touched. It holds no customer
+data and was still the worst one to leave open — it is the ledger
+`migrate deploy` reads, so a writer could make the next deploy replay a migration
+against a live database. It is now RLS-enabled with no policy (deny-all; the
+owner bypasses, so Prisma is unaffected).
+
+Revoking the grants costs nothing today: **nothing in `src/` calls
+`createServerSupabaseClient()` or `useSupabaseClient()`.** The only Supabase
+traffic is Storage through the service-role client, and `service_role` is a
+separate role the migration does not touch. The policies remain as
+defence-in-depth — when the realtime path arrives, re-opening a table is one
+`grant` over a policy that is already written and already tested.
+
+**Verifying:** two checks, covering different things.
+
+`npm run test:rls` (`scripts/rls-coverage.test.ts`) reads the catalog on
+`DATABASE_URL` and asserts that every table in `public` has RLS on, that each one
+either has a policy or is a declared deny-all table, that neither exposed role
+holds a grant, and that the default privileges have not been re-granted. Point it
+at staging or production — it only SELECTs. Run it after any migration that adds
+a table: Prisma emits no RLS of its own, and the omission produces no error
+anywhere. It asks the live database rather than linting the migration files
+because a table created by hand in the Supabase SQL editor is a normal thing and
+a lint would not see it.
+
+`scripts/rls-test.sql` is a self-contained harness that seeds two tenants and
+asserts the policy behaviour underneath: isolation, `WITH CHECK` rejection of
+cross-tenant inserts, fail-closed behaviour with no org, and that neither `anon`
+nor `authenticated` can reach a table before its grant is restored. It re-grants
+to `authenticated` partway through, deliberately and only locally, in order to
+exercise policies that production no longer reaches. Against a throwaway
+Postgres:
 
 ```bash
 docker run -d --name staffly-rls -e POSTGRES_PASSWORD=pw -p 55432:5432 postgres:16
 docker exec -i staffly-rls psql -U postgres < scripts/supabase-local-stub.sql
-docker exec -i staffly-rls psql -U postgres < prisma/migrations/*_init/migration.sql
-docker exec -i staffly-rls psql -U postgres < prisma/migrations/*_rls_policies/migration.sql
+for m in prisma/migrations/*/migration.sql; do
+  docker exec -i staffly-rls psql -v ON_ERROR_STOP=1 -U postgres < "$m"
+done
 docker exec -i staffly-rls psql -U postgres < scripts/rls-test.sql
+DATABASE_URL="postgresql://postgres:pw@localhost:55432/postgres" npm run test:rls
 docker rm -f staffly-rls
 ```
+
+The harness seeds unconditionally, so it runs once per fresh database. Run
+`test:rls` before `rls-test.sql` if you want it green — the re-grant above is
+exactly what it is built to catch.
 
 `scripts/supabase-local-stub.sql` stands in for the Supabase pieces the policies
 depend on (`auth.jwt()`, the `anon` and `authenticated` roles), so this runs
@@ -329,7 +399,7 @@ src/
 ## Email ingestion
 
 ```
-HR inbox ──forward──▶ {org}-{id}@mail.staffly.com
+HR inbox ──forward──▶ {org}-{id}@mail.stafflyconsulting.com
                             │
                    Resend inbound parsing
                             │

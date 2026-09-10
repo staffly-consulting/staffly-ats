@@ -97,6 +97,8 @@ export interface JobPostCandidate {
   extracted: ExtractedResumeData | null;
   /** True when a `Referral` row points at this candidate. */
   referral: boolean;
+  /** When someone first opened this candidate. Null means nobody has. */
+  readAt: string | null;
 }
 
 /**
@@ -114,6 +116,13 @@ export interface CandidateQueryFilters {
   university?: string;
   nationality?: string;
   flaggedOnly?: boolean;
+  /**
+   * The human decision, not the score. "undecided" means a candidate nobody
+   * has ruled on yet — the queue a recruiter actually works through.
+   */
+  decision?: "SHORTLISTED" | "REJECTED" | "undecided";
+  /** Only candidates nobody has opened yet. */
+  unreadOnly?: boolean;
 }
 
 function buildWhere(
@@ -142,6 +151,17 @@ function buildWhere(
   // `isNot: null` on a one-to-one relation is how Prisma expresses "has one".
   if (filters.referralOnly) where.referral = { isNot: null };
 
+  if (filters.decision === "undecided") {
+    // Everything a person has not ruled on. Deliberately includes ERROR and
+    // in-flight candidates: they are unresolved work too, and hiding them here
+    // would make the queue look complete when it is not.
+    where.status = { notIn: ["SHORTLISTED", "REJECTED"] };
+  } else if (filters.decision) {
+    where.status = filters.decision;
+  }
+
+  if (filters.unreadOnly) where.readAt = null;
+
   if (filters.nationality) where.nationality = filters.nationality;
 
   if (filters.university) {
@@ -163,15 +183,32 @@ function buildWhere(
  * URL and is therefore attacker-controlled. Filtering on both means a guessed
  * id from another tenant returns nothing rather than that tenant's candidates.
  */
+/**
+ * The table's page size. Also the point at which an export has to admit it is
+ * showing a subset — see `CANDIDATE_EXPORT_LIMIT`.
+ */
+export const CANDIDATE_PAGE_LIMIT = 500;
+
+/**
+ * How many rows an export may contain.
+ *
+ * Higher than the on-screen limit because the two fail differently: a truncated
+ * table is obvious and scrollable, while a truncated spreadsheet is a file
+ * someone forwards to a hiring manager believing it is complete. The export
+ * states its own row count and says so when it hit this ceiling.
+ */
+export const CANDIDATE_EXPORT_LIMIT = 5_000;
+
 export async function listJobPostCandidates(
   orgId: string,
   jobPostId: string,
   filters: CandidateQueryFilters = {},
+  options: { limit?: number } = {},
 ): Promise<JobPostCandidate[]> {
   const rows = await prisma.candidate.findMany({
     where: buildWhere(orgId, jobPostId, filters),
     orderBy: { ingestedAt: "desc" },
-    take: 500,
+    take: options.limit ?? CANDIDATE_PAGE_LIMIT,
     select: {
       id: true,
       name: true,
@@ -183,6 +220,7 @@ export async function listJobPostCandidates(
       extractedData: true,
       ingestedAt: true,
       referral: { select: { id: true } },
+      readAt: true,
       // Ordered so the newest score wins if several ever exist.
       scores: {
         select: {
@@ -227,6 +265,7 @@ export async function listJobPostCandidates(
     // version, and a render must not crash because a field moved.
     extracted: parseExtractedData(row.extractedData),
     referral: row.referral !== null,
+    readAt: row.readAt?.toISOString() ?? null,
   }));
 }
 
@@ -251,7 +290,11 @@ export async function assignCandidateToJobPost(
 ): Promise<boolean> {
   if (jobPostId) {
     const jobPost = await prisma.jobPost.findFirst({
-      where: { id: jobPostId, orgId },
+      // ARCHIVED is a soft delete, so an archived post is treated here exactly
+      // as a non-existent one. The picker already hides them; this is what stops
+      // a stale tab or a direct call from filing a live application into
+      // something the recruiter believes they deleted.
+      where: { id: jobPostId, orgId, status: { not: "ARCHIVED" } },
       select: { id: true },
     });
     if (!jobPost) return false;

@@ -11,11 +11,14 @@ import {
   PLANS,
   PLAN_ORDER,
   SELF_SERVE_TIERS,
+  TRIAL_PERIOD_DAYS,
   addOneMonth,
   annualSavingPercent,
   hasFeature,
   includedApplications,
   isOverageAt,
+  isTrialing,
+  needsFirstSubscription,
   planRank,
   priceFor,
   quotaSnapshot,
@@ -33,9 +36,20 @@ function check(name: string, condition: boolean, detail?: unknown) {
   }
 }
 
-const org = (tier: PlanTier, status: string | null = "active") => ({
+/**
+ * `requiresSubscription` defaults to FALSE here — the legacy shape — so every
+ * assertion written before the paywall still exercises what it was written to
+ * exercise. New-org behaviour is asserted explicitly below, where it is the
+ * point of the test rather than an implicit default.
+ */
+const org = (
+  tier: PlanTier,
+  status: string | null = "active",
+  requiresSubscription = false,
+) => ({
   planTier: tier,
   stripeSubscriptionStatus: status,
+  requiresSubscription,
 });
 
 console.log("\n--- the locked pricing table ---");
@@ -130,20 +144,20 @@ check(
 
 check(
   "Shortlist has NO API/export",
-  !hasFeature(org("SHORTLIST"), FEATURES.API_EXPORT),
+  !hasFeature(org("SHORTLIST"), FEATURES.API_ACCESS),
 );
 check(
   "Pipeline has NO API/export",
-  !hasFeature(org("PIPELINE"), FEATURES.API_EXPORT),
+  !hasFeature(org("PIPELINE"), FEATURES.API_ACCESS),
 );
 check(
   "Talent Pool has API/export",
-  hasFeature(org("TALENT_POOL"), FEATURES.API_EXPORT),
+  hasFeature(org("TALENT_POOL"), FEATURES.API_ACCESS),
 );
 
 check(
   "upsell names the right tier",
-  requiredTierFor(FEATURES.API_EXPORT).label === "Talent Pool",
+  requiredTierFor(FEATURES.API_ACCESS).label === "Talent Pool",
 );
 check(
   "...and for referrals",
@@ -152,7 +166,7 @@ check(
 
 console.log("\n--- subscription status overrides tier ---");
 check(
-  "null status keeps access (pre-billing orgs are not locked out)",
+  "null status keeps access for a pre-billing org (not locked out on deploy)",
   subscriptionIsActive(org("PIPELINE", null)),
 );
 check("active keeps access", subscriptionIsActive(org("PIPELINE", "active")));
@@ -172,7 +186,49 @@ check(
 );
 check(
   "a canceled Talent Pool org loses paid features despite its tier",
-  !hasFeature(org("TALENT_POOL", "canceled"), FEATURES.API_EXPORT),
+  !hasFeature(org("TALENT_POOL", "canceled"), FEATURES.API_ACCESS),
+);
+
+console.log("\n--- the paywall: there is no free tier ---");
+check(
+  "a NEW org that never subscribed has no access",
+  !subscriptionIsActive(org("SHORTLIST", null, true)),
+);
+check(
+  "...and gets no paid features either, despite the default SHORTLIST tier",
+  !hasFeature(org("PIPELINE", null, true), FEATURES.REFERRAL_PRIORITY),
+);
+check(
+  "a trialing new org DOES have access",
+  subscriptionIsActive(org("SHORTLIST", "trialing", true)),
+);
+check(
+  "an active new org has access",
+  subscriptionIsActive(org("PIPELINE", "active", true)),
+);
+check(
+  "a new org whose trial lapsed to canceled loses access",
+  !subscriptionIsActive(org("PIPELINE", "canceled", true)),
+);
+check(
+  "requiresSubscription=false is the escape hatch for out-of-band accounts",
+  subscriptionIsActive(org("ENTERPRISE", null, false)),
+);
+
+check(
+  "needsFirstSubscription is true only for a new org that never subscribed",
+  needsFirstSubscription(org("SHORTLIST", null, true)) &&
+    !needsFirstSubscription(org("SHORTLIST", null, false)) &&
+    !needsFirstSubscription(org("PIPELINE", "canceled", true)),
+);
+check(
+  "isTrialing tracks the Stripe status verbatim",
+  isTrialing(org("PIPELINE", "trialing", true)) &&
+    !isTrialing(org("PIPELINE", "active", true)),
+);
+check(
+  "the trial is 14 days, not 7 — applications need time to arrive",
+  TRIAL_PERIOD_DAYS === 14,
 );
 
 console.log("\n--- quota arithmetic ---");
@@ -190,11 +246,7 @@ console.log("\n--- quota arithmetic ---");
     ...org("SHORTLIST"),
     applicationsUsedInCycle: 150,
   });
-  check(
-    "exactly 150 is NOT over quota (inclusive)",
-    !exact.isOverQuota,
-    exact,
-  );
+  check("exactly 150 is NOT over quota (inclusive)", !exact.isOverQuota, exact);
   check("...and fraction is exactly 1", exact.fraction === 1);
 
   const over = quotaSnapshot({
@@ -247,10 +299,7 @@ console.log("\n--- quota arithmetic ---");
 
 console.log("\n--- the overage boundary at ingestion ---");
 check("application 150 is included", !isOverageAt("SHORTLIST", 150));
-check(
-  "application 151 is the FIRST billed one",
-  isOverageAt("SHORTLIST", 151),
-);
+check("application 151 is the FIRST billed one", isOverageAt("SHORTLIST", 151));
 check(
   "Pipeline boundary at 901",
   !isOverageAt("PIPELINE", 900) && isOverageAt("PIPELINE", 901),
@@ -300,7 +349,11 @@ console.log("\n--- monthly anchor advance (no drift, month-length safe) ---");
   );
 
   const stale = advance("2025-06-01T00:00:00.000Z", "2026-08-26T03:00:00.000Z");
-  check("a 14-month-stale anchor catches up in one run", stale.cycles === 14, stale);
+  check(
+    "a 14-month-stale anchor catches up in one run",
+    stale.cycles === 14,
+    stale,
+  );
   check(
     "...landing on a real anniversary of the anchor",
     stale.anchor === "2026-08-01T00:00:00.000Z",
@@ -313,10 +366,7 @@ console.log("\n--- monthly anchor advance (no drift, month-length safe) ---");
   );
   check("an anchor under a month old does not advance", notDue.cycles === 0);
 
-  const exact = advance(
-    "2026-07-26T03:00:00.000Z",
-    "2026-08-26T03:00:00.000Z",
-  );
+  const exact = advance("2026-07-26T03:00:00.000Z", "2026-08-26T03:00:00.000Z");
   check("exactly one month to the second does advance", exact.cycles === 1);
 
   // Month-length clamping. Naive setUTCMonth(+1) turns 31 Jan into 3 Mar,

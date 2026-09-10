@@ -29,6 +29,38 @@ insert into candidate_scores (id, "candidateId", "jobPostId", "overallScore", br
   ('s_A', 'c_A', 'j_A', 80, '[]'::jsonb, 'a'),
   ('s_B', 'c_B', 'j_B', 70, '[]'::jsonb, 'b');
 
+\echo '===== TEST 0: authenticated holds no grants -> denied before RLS ====='
+-- Must run BEFORE the re-grant below. This is the production posture as of the
+-- rls_hardening migration: the PostgREST-facing roles reach nothing in `public`,
+-- so a request is refused at the privilege layer and no policy is consulted.
+-- Expect: permission denied for table job_posts.
+begin;
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"user_A","role":"authenticated","o":{"id":"org_A"}}';
+\set ON_ERROR_STOP off
+select count(*) from job_posts;
+\set ON_ERROR_STOP on
+rollback;
+
+-- ---------- restore the grant, to test the layer underneath it ----------
+--
+-- Everything from TEST 1 on exercises the POLICIES, which TEST 0 just proved are
+-- currently unreachable. They are still worth testing: they are what will be
+-- holding the line the day the Supabase client path is switched on and the grant
+-- comes back. This re-grant is local to this harness and is never applied to a
+-- real database — the grant in production is revoked by the rls_hardening
+-- migration and `npm run test:rls` fails if it reappears.
+grant select, insert, update, delete on
+  public.organizations,
+  public.org_members,
+  public.job_posts,
+  public.university_preferences,
+  public.email_inboxes,
+  public.candidates,
+  public.referrals,
+  public.candidate_scores
+to authenticated;
+
 \echo '===== TEST 1: caller in org_A (Clerk v2 token, o.id) ====='
 begin;
 set local role authenticated;

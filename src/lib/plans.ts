@@ -81,6 +81,22 @@ export const PLANS: Record<PlanTier, PlanDefinition> = {
   },
 };
 
+/**
+ * Free trial length, in days, applied at the first Checkout only.
+ *
+ * Fourteen rather than seven because of how this product delivers value: an
+ * application has to *arrive* before anything is scored, and that means
+ * forwarding a careers inbox — often an IT ticket — then posting a job and
+ * waiting for candidates. A week can easily elapse with nothing ingested, which
+ * charges the customer before they have seen the product work.
+ *
+ * Stripe owns the trial itself: this is passed as `trial_period_days` on the
+ * Checkout session, the subscription sits in `trialing`, and Stripe converts it
+ * without us tracking a date. Nothing in this codebase should compute a trial
+ * end — read `currentPeriodEnd`, which during a trial is the trial end.
+ */
+export const TRIAL_PERIOD_DAYS = 14;
+
 /** Ascending. Index is the comparison key for "this tier and above". */
 export const PLAN_ORDER: PlanTier[] = [
   "SHORTLIST",
@@ -105,7 +121,7 @@ export function planRank(tier: PlanTier): number {
 export const FEATURES = {
   REFERRAL_PRIORITY: "REFERRAL_PRIORITY",
   UNIVERSITY_PREFERENCES: "UNIVERSITY_PREFERENCES",
-  API_EXPORT: "API_EXPORT",
+  API_ACCESS: "API_ACCESS",
 } as const;
 
 export type Feature = (typeof FEATURES)[keyof typeof FEATURES];
@@ -114,41 +130,105 @@ export type Feature = (typeof FEATURES)[keyof typeof FEATURES];
 const FEATURE_MINIMUM: Record<Feature, PlanTier> = {
   REFERRAL_PRIORITY: "PIPELINE",
   UNIVERSITY_PREFERENCES: "PIPELINE",
-  API_EXPORT: "TALENT_POOL",
+  API_ACCESS: "TALENT_POOL",
 };
 
 export const FEATURE_LABELS: Record<Feature, string> = {
   REFERRAL_PRIORITY: "Referral prioritization",
   UNIVERSITY_PREFERENCES: "University preferences",
-  API_EXPORT: "API access and candidate export",
+  API_ACCESS: "API access and integrations",
 };
+
+/**
+ * NOTE ON EXPORT — deliberately absent from the table above.
+ *
+ * This was once `API_EXPORT`, "API access and candidate export", gated at
+ * TALENT_POOL. Those are two different products wearing one flag, and only one
+ * of them belongs behind a paywall.
+ *
+ * Downloading a shortlist is the core recruiter workflow — screen two hundred
+ * applicants, take the best twelve to the hiring manager. Charging $499/month
+ * for it does not sell upgrades; it makes a company's own candidate data feel
+ * held hostage, which is the fastest way to lose a deal for a screening tool.
+ * The data is also personal information belonging to real applicants, and
+ * "pay us to get it out" is an argument nobody wants to have with a regulator
+ * under GDPR or Thailand's PDPA.
+ *
+ * So export ships on every plan and is gated on ROLE instead — see
+ * `PERMISSIONS.CANDIDATE_EXPORT`. Programmatic access stays paid as
+ * `API_ACCESS`, where the tier boundary is defensible.
+ */
 
 /**
  * Subscription statuses that revoke access.
  *
- * ASSUMPTION, flagged for review: the spec asks for a "suspended/free state" on
- * `planTier` for a cancelled subscription, but no such convention exists in this
- * codebase and `PlanTier` has no free member. Rather than invent one, access is
- * gated on `stripeSubscriptionStatus` — which Stripe already owns and sets to
- * `canceled` itself, so there is one source of truth instead of two that can
- * disagree. `planTier` then records what the org *bought*, and status records
- * whether they are currently paying.
+ * Access is gated on `stripeSubscriptionStatus` rather than on a free member of
+ * `PlanTier`: Stripe already owns that column and sets it to `canceled` itself,
+ * so there is one source of truth instead of two that can disagree. `planTier`
+ * records what the org *bought*; status records whether they are still paying.
  *
- * A null status means "no subscription record at all": every org today, and any
- * org created before billing shipped. Those keep access — revoking on null
- * would lock out every existing customer the moment this deploys.
+ * `trialing` is deliberately absent — a trial is active access. `past_due` is
+ * absent too: Stripe is still retrying the card, and cutting a customer off
+ * mid-dunning turns a recoverable payment failure into a churn event.
  */
 const REVOKED_STATUSES = new Set(["canceled", "unpaid", "incomplete_expired"]);
+
+/** Statuses that mean "paying or in trial", for display. */
+export function isTrialing(org: BillableOrg): boolean {
+  return org.stripeSubscriptionStatus === "trialing";
+}
 
 /** The subset of an Organization that entitlement checks need. */
 export interface BillableOrg {
   planTier: PlanTier;
   stripeSubscriptionStatus: string | null;
+  /** False for orgs granted access without a subscription. See the schema. */
+  requiresSubscription: boolean;
 }
 
+/**
+ * Whether the org may use paid features right now.
+ *
+ * The null-status case is the one that needs the extra column. A null status is
+ * two different situations wearing the same value — "signed up and never
+ * subscribed" and "existed before billing shipped" — and only the first should
+ * lose access. `requiresSubscription` is what tells them apart: it defaults to
+ * true for every new org, and the paywall migration backfilled it to false for
+ * everyone who was already here.
+ */
 export function subscriptionIsActive(org: BillableOrg): boolean {
-  if (!org.stripeSubscriptionStatus) return true;
+  if (!org.stripeSubscriptionStatus) return !org.requiresSubscription;
   return !REVOKED_STATUSES.has(org.stripeSubscriptionStatus);
+}
+
+/**
+ * True when the org has simply never bought anything — as opposed to having
+ * bought and lapsed. The two need different words in the UI: one is "choose a
+ * plan", the other is "your subscription ended".
+ */
+export function needsFirstSubscription(org: BillableOrg): boolean {
+  return org.requiresSubscription && org.stripeSubscriptionStatus === null;
+}
+
+/**
+ * Whether this org's next Checkout carries the free trial.
+ *
+ * Pure, and the single definition of the rule: `createCheckoutSession` decides
+ * what Stripe is asked for, and the UI decides whether to promise a trial. If
+ * those two ever disagreed, the buyer would be told "free for 14 days" on a
+ * page whose button charges them immediately.
+ *
+ * A trial is a once-per-org thing. Both columns are checked because they fail
+ * in different directions: the id can be present while a status write is still
+ * in flight, and a status of `canceled` outlives a subscription that is gone.
+ */
+export function isTrialEligible(org: {
+  stripeSubscriptionId: string | null;
+  stripeSubscriptionStatus: string | null;
+}): boolean {
+  return (
+    org.stripeSubscriptionId === null && org.stripeSubscriptionStatus === null
+  );
 }
 
 /**

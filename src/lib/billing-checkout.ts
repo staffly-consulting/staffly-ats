@@ -2,7 +2,7 @@ import "server-only";
 
 import type { BillingInterval, PlanTier } from "@prisma/client";
 
-import { PLANS } from "@/lib/plans";
+import { PLANS, TRIAL_PERIOD_DAYS, isTrialEligible } from "@/lib/plans";
 import { prisma } from "@/lib/prisma";
 import {
   flatPriceId,
@@ -107,6 +107,33 @@ export interface CheckoutInput {
   interval: BillingInterval;
 }
 
+/**
+ * Whether this Checkout should carry the free trial.
+ *
+ * Only ever on an org's FIRST subscription. `startCheckoutAction` is also how
+ * plan changes are made, and Stripe will happily grant a fresh trial on every
+ * session it is asked to — so without this check a customer could switch tier
+ * every fortnight and never pay for anything.
+ *
+ * Keyed on `stripeSubscriptionStatus` rather than on the customer existing: the
+ * customer row is created on the first Checkout *attempt*, including abandoned
+ * ones, so someone who bounced off the payment form would lose their trial
+ * without ever having had it. The status column is only ever written by the
+ * webhook, from a real subscription, and `applySubscription` keeps writing it
+ * after cancellation (as `canceled`) — so a lapsed customer coming back does
+ * not get a second free run either.
+ */
+async function isEligibleForTrial(orgId: string): Promise<boolean> {
+  const org = await prisma.organization.findUnique({
+    where: { id: orgId },
+    select: { stripeSubscriptionId: true, stripeSubscriptionStatus: true },
+  });
+
+  // The rule itself lives in `lib/plans.ts`, so the screen that promises a
+  // trial and the session that grants one read the same predicate.
+  return org !== null && isTrialEligible(org);
+}
+
 /** Returns the URL to redirect the buyer to. */
 export async function createCheckoutSession(
   input: CheckoutInput,
@@ -117,7 +144,10 @@ export async function createCheckoutSession(
     );
   }
 
-  const customerId = await ensureStripeCustomer(input);
+  const [customerId, withTrial] = await Promise.all([
+    ensureStripeCustomer(input),
+    isEligibleForTrial(input.orgId),
+  ]);
 
   // Monthly plans can carry the metered item through Checkout, because both
   // items bill monthly. Annual plans cannot — Checkout rejects mixed intervals —
@@ -138,6 +168,9 @@ export async function createCheckoutSession(
       // Read by the webhook so an org can be resolved even if the Checkout
       // session itself is never seen.
       metadata: { orgId: input.orgId, planTier: input.tier },
+      // First purchase only — see `isEligibleForTrial`. Stripe collects the card
+      // up front and converts on its own; nothing here tracks a trial end.
+      ...(withTrial ? { trial_period_days: TRIAL_PERIOD_DAYS } : {}),
     },
     // Survives even if the customer metadata is somehow absent.
     client_reference_id: input.orgId,
@@ -288,9 +321,7 @@ export interface CancelResult {
  * Never cancels immediately: the customer has paid for this period, and taking
  * the service away before it ends is a refund question, not a cancel one.
  */
-export async function cancelSubscription(
-  orgId: string,
-): Promise<CancelResult> {
+export async function cancelSubscription(orgId: string): Promise<CancelResult> {
   const org = await prisma.organization.findUnique({
     where: { id: orgId },
     select: { stripeSubscriptionId: true },

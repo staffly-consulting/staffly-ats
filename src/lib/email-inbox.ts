@@ -12,7 +12,7 @@ import { prisma } from "@/lib/prisma";
  */
 
 export function inboundDomain(): string {
-  return process.env.INBOUND_EMAIL_DOMAIN ?? "mail.staffly.com";
+  return process.env.INBOUND_EMAIL_DOMAIN ?? "mail.stafflyconsulting.com";
 }
 
 /**

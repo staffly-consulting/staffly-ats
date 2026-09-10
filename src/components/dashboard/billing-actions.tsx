@@ -11,6 +11,11 @@ import {
   resumeSubscriptionAction,
   startCheckoutAction,
 } from "@/app/(dashboard)/dashboard/settings/billing.actions";
+import {
+  IntervalToggle,
+  PlanFacts,
+  PlanPrice,
+} from "@/components/pricing/plan-presentation";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -20,12 +25,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  PLANS,
-  SELF_SERVE_TIERS,
-  annualSavingPercent,
-  priceFor,
-} from "@/lib/plans";
+import { PLANS, SELF_SERVE_TIERS, TRIAL_PERIOD_DAYS } from "@/lib/plans";
 import { cn, formatDate } from "@/lib/utils";
 import type { BillingInterval, PlanTier } from "@prisma/client";
 
@@ -51,7 +51,6 @@ function PlanOption({
   disabled: boolean;
 }) {
   const plan = PLANS[tier];
-  const price = priceFor(tier, interval);
 
   return (
     <button
@@ -76,24 +75,10 @@ function PlanOption({
             </span>
           ) : null}
         </div>
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          {plan.includedApplications.toLocaleString()} applications per month ·{" "}
-          {plan.jobPostLimit === null
-            ? "unlimited job posts"
-            : `${plan.jobPostLimit} job posts`}
-        </p>
-        <p className="text-xs text-muted-foreground">
-          ${plan.overagePerApplication.toFixed(2)} per application beyond the
-          pool
-        </p>
+        <PlanFacts tier={tier} />
       </div>
       <div className="shrink-0 text-right">
-        <div className="font-semibold tabular-nums">
-          ${price.toLocaleString()}
-        </div>
-        <div className="text-xs text-muted-foreground">
-          {interval === "ANNUAL" ? "per year" : "per month"}
-        </div>
+        <PlanPrice tier={tier} interval={interval} />
       </div>
     </button>
   );
@@ -102,12 +87,19 @@ function PlanOption({
 export function BillingActions({
   currentTier,
   hasSubscription,
+  offerTrial,
   configured,
   cancelAtPeriodEnd,
   currentPeriodEnd,
 }: {
   currentTier: PlanTier;
   hasSubscription: boolean;
+  /**
+   * Whether this org's next Checkout actually carries the free trial. Resolved
+   * on the server: it is not simply "has no subscription", because an org that
+   * is exempt from the paywall has nothing to trial.
+   */
+  offerTrial: boolean;
   configured: boolean;
   cancelAtPeriodEnd: boolean;
   /** ISO, for the confirmation copy. */
@@ -180,7 +172,11 @@ export function BillingActions({
         <DialogTrigger asChild>
           <Button disabled={pending}>
             <CreditCard className="size-4" />
-            {hasSubscription ? "Change plan" : "Choose a plan"}
+            {offerTrial
+              ? `Start ${TRIAL_PERIOD_DAYS}-day trial`
+              : hasSubscription
+                ? "Change plan"
+                : "Choose a plan"}
           </Button>
         </DialogTrigger>
         <DialogContent className="sm:max-w-lg">
@@ -193,28 +189,11 @@ export function BillingActions({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="inline-flex rounded-lg border border-border p-0.5 text-sm">
-            {(["MONTHLY", "ANNUAL"] as BillingInterval[]).map((value) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setInterval(value)}
-                className={cn(
-                  "rounded-md px-3 py-1.5 transition-colors",
-                  interval === value
-                    ? "bg-brand text-brand-foreground"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {value === "MONTHLY" ? "Monthly" : "Annual"}
-                {value === "ANNUAL" ? (
-                  <span className="ml-1.5 text-xs opacity-80">
-                    save {annualSavingPercent("PIPELINE")}%
-                  </span>
-                ) : null}
-              </button>
-            ))}
-          </div>
+          <IntervalToggle
+            value={interval}
+            onChange={setInterval}
+            savingForTier="PIPELINE"
+          />
 
           <div className="space-y-2">
             {SELF_SERVE_TIERS.map((tier) => (
@@ -230,8 +209,22 @@ export function BillingActions({
           </div>
 
           <p className="text-xs text-muted-foreground">
-            You will be taken to Stripe to pay. Enterprise is sold separately —
-            get in touch rather than buying here.
+            {/* Only offered where it is actually granted: the Checkout session
+                carries a trial on an org's first subscription only, so an
+                existing customer switching tier must not be promised one. */}
+            {!offerTrial ? (
+              <>
+                You will be taken to Stripe to pay. Enterprise is sold
+                separately — get in touch rather than buying here.
+              </>
+            ) : (
+              <>
+                Your first {TRIAL_PERIOD_DAYS} days are free. Stripe will ask
+                for a card, but nothing is charged until the trial ends, and
+                applications received during it never incur overage. Enterprise
+                is sold separately — get in touch rather than buying here.
+              </>
+            )}
           </p>
         </DialogContent>
       </Dialog>
@@ -298,11 +291,7 @@ export function BillingActions({
               >
                 Keep plan
               </Button>
-              <Button
-                variant="destructive"
-                onClick={cancel}
-                disabled={pending}
-              >
+              <Button variant="destructive" onClick={cancel} disabled={pending}>
                 Cancel plan
               </Button>
             </div>

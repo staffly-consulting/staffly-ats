@@ -83,14 +83,48 @@
     "metaTitle": "Team",
     "eyebrow": "Settings",
     "title": "Team",
-    "description": "Everyone with access to this organization. Use the organization switcher in the sidebar to invite or remove people.",
-    "rolesNotEnforced": "Roles are recorded here but <strong>not yet enforced</strong> — any member can currently create job posts and manage the email connection.",
+    "description": "Everyone with access to this organization. Membership is managed by your organization's administrator.",
+    "descriptionAdmin": "Everyone with access to this organization. Invite colleagues, set what they can do, and remove access when they leave.",
+    "rolesExplained": "<strong>Admins</strong> manage billing, the email connection and members. <strong>Recruiters</strong> run searches — job posts, candidates and university preferences. <strong>Viewers</strong> can read everything, including resumes, but change nothing. Seats are unlimited on every plan.",
     "memberCount": "{count, plural, one {# member} other {# members}}",
+    "pendingCount": "{count, plural, one {# pending invitation} other {# pending invitations}}",
     "columnMember": "Member",
     "columnRole": "Role",
     "columnJoined": "Joined",
+    "columnInvitee": "Invited",
+    "columnExpires": "Expires",
+    "columnActions": "Actions",
     "emptyTitle": "No members yet",
-    "emptyDescription": "Invite people from the organization switcher in the sidebar and they will appear here."
+    "emptyDescription": "Once people join this organization they will appear here.",
+    "cancel": "Cancel",
+    "invite": "Invite",
+    "inviteTitle": "Invite someone",
+    "inviteDescription": "They will get an email with a link to join this organization. Seats are unlimited — you are billed on applications, not people.",
+    "inviteEmailLabel": "Email address",
+    "inviteRoleLabel": "Role",
+    "inviteSubmit": "Send invitation",
+    "inviteSending": "Sending…",
+    "inviteSent": "Invitation sent to {email}",
+    "inviteFailed": "Could not send that invitation",
+    "roleHint": {
+      "ADMIN": "Full access, including billing, the email connection and managing members.",
+      "RECRUITER": "Can create job posts and work with candidates. Cannot change billing, the email connection or members.",
+      "VIEWER": "Read-only. Can see job posts, candidates, scores and resumes, but change nothing."
+    },
+    "revoke": "Revoke",
+    "revoked": "Invitation to {email} revoked",
+    "revokeFailed": "Could not revoke that invitation",
+    "manageMember": "Manage {member}",
+    "changeRole": "Change role",
+    "roleChanged": "{member} is now {role}",
+    "roleChangeFailed": "Could not change that role",
+    "remove": "Remove from organization",
+    "removeTitle": "Remove this member?",
+    "removeDescription": "{member} will lose access to this organization immediately. Job posts they created stay, and they can be invited again later.",
+    "removeConfirm": "Remove",
+    "removing": "Removing…",
+    "removed": "{member} was removed",
+    "removeFailed": "Could not remove that member"
   },
   "meta": {
     "signUp": "Sign up",
@@ -117,7 +151,7 @@
     "tabAll": "All",
     "tabOpen": "Open",
     "tabDraft": "Drafts",
-    "tabArchived": "Closed & archived",
+    "tabArchived": "Archived",
     "emptyTitle": "Nothing here yet",
     "emptyDescription": "Job posts you create will show up in this view.",
     "statOpenRoles": "Open roles",
@@ -128,7 +162,8 @@
     "statAboveThreshold": "Above threshold",
     "statScoringOrHigher": "Scoring {threshold} or higher",
     "statAverageScore": "Average score",
-    "statAcrossScored": "Across all scored applications"
+    "statAcrossScored": "Across all scored applications",
+    "tabClosed": "Closed"
   },
   "jobCard": {
     "averageScore": "Avg. score",
@@ -175,5 +210,36 @@
     "openResumeFailed": "Could not open resume",
     "retryExtraction": "Retry extraction",
     "retryScoring": "Retry scoring"
+  },
+  "jobLifecycle": {
+    "cancel": "Cancel",
+    "close": {
+      "label": "Close",
+      "confirmTitle": "Close this job post?",
+      "confirmDescription": "It stops appearing as an open role and no new candidates can be assigned to it. Everyone keeps access to its candidates and scores, and you can reopen it at any time.",
+      "confirm": "Close job post",
+      "working": "Closing…",
+      "done": "Job post closed",
+      "failed": "Could not close this job post"
+    },
+    "reopen": {
+      "label": "Reopen",
+      "done": "Job post reopened",
+      "failed": "Could not reopen this job post"
+    },
+    "archive": {
+      "label": "Archive",
+      "confirmTitle": "Archive this job post?",
+      "confirmDescription": "Nothing is deleted. It is hidden from the dashboard and can no longer receive candidates, but every application, score and referral is kept — find it under the Archived tab and restore it whenever you like.",
+      "confirm": "Archive job post",
+      "working": "Archiving…",
+      "done": "Job post archived",
+      "failed": "Could not archive this job post"
+    },
+    "restore": {
+      "label": "Restore",
+      "done": "Job post restored",
+      "failed": "Could not restore this job post"
+    }
   }
 }

@@ -8,6 +8,7 @@ import { toast } from "sonner";
 
 import { getResumeUrlAction } from "@/app/(dashboard)/dashboard/candidate-actions";
 import { CandidateDetailSheet } from "@/components/dashboard/candidate-detail-sheet";
+import { setCandidateReadAction } from "@/app/(dashboard)/dashboard/candidate-actions";
 import { CandidateFilterBar } from "@/components/dashboard/candidate-filters";
 import { CandidateStatusPill } from "@/components/dashboard/status-pill";
 import { Badge } from "@/components/ui/badge";
@@ -62,14 +63,47 @@ export function CandidateTable({
   universities,
   nationalities,
   totalCount,
+  canDecide,
 }: {
   candidates: JobPostCandidate[];
   universities: string[];
   nationalities: string[];
   /** Unfiltered count, for the "showing X of Y" line. */
   totalCount: number;
+  /**
+   * Whether this member may shortlist or reject. False for VIEWER, who can
+   * read every score but must not change a hiring decision — the property that
+   * makes inviting the whole hiring panel safe.
+   */
+  canDecide: boolean;
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  /**
+   * Candidates marked read in this session, on top of what the server sent.
+   *
+   * Held locally so the dot clears the instant the sheet opens. The action
+   * deliberately does not revalidate — re-rendering the whole table on every
+   * open would make the click feel slow for a change that moves one dot — so
+   * this is what keeps the screen honest until the next navigation.
+   */
+  const [readNow, setReadNow] = useState<Set<string>>(new Set());
+
+  /**
+   * Opens a candidate and records that someone looked.
+   *
+   * Marking read is not permission-gated: reading is the one thing every role
+   * can do, so a viewer opening a candidate has to clear it from the queue
+   * like anyone else. Fire-and-forget — a failed write is a stale dot, not
+   * something worth interrupting the reader with.
+   */
+  function open(candidateId: string, alreadyRead: boolean) {
+    setSelectedId(candidateId);
+    if (alreadyRead) return;
+
+    setReadNow((current) => new Set(current).add(candidateId));
+    void setCandidateReadAction(candidateId, true);
+  }
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
 
@@ -131,6 +165,11 @@ export function CandidateTable({
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
+                {/* Unread dot. No label — the marker is decorative and the
+                    state is announced in each row's aria-label. */}
+                <TableHead className="w-6 pr-0">
+                  <span className="sr-only">Opened</span>
+                </TableHead>
                 <TableHead className="w-23">Score</TableHead>
                 <TableHead className="min-w-55">Candidate</TableHead>
                 <TableHead>Status</TableHead>
@@ -144,7 +183,7 @@ export function CandidateTable({
             <TableBody>
               {visible.length === 0 ? (
                 <TableRow className="hover:bg-transparent">
-                  <TableCell colSpan={8} className="py-14 text-center">
+                  <TableCell colSpan={9} className="py-14 text-center">
                     <p className="text-sm font-medium">
                       No candidates match these filters
                     </p>
@@ -159,12 +198,24 @@ export function CandidateTable({
                   key={candidate.id}
                   tabIndex={0}
                   role="button"
-                  aria-label={`Open details for ${candidate.name ?? "candidate"}`}
-                  onClick={() => setSelectedId(candidate.id)}
+                  aria-label={`Open details for ${candidate.name ?? "candidate"}${
+                    candidate.readAt === null && !readNow.has(candidate.id)
+                      ? " (not opened yet)"
+                      : ""
+                  }`}
+                  onClick={() =>
+                    open(
+                      candidate.id,
+                      candidate.readAt !== null || readNow.has(candidate.id),
+                    )
+                  }
                   onKeyDown={(event) => {
                     if (event.key === "Enter" || event.key === " ") {
                       event.preventDefault();
-                      setSelectedId(candidate.id);
+                      open(
+                        candidate.id,
+                        candidate.readAt !== null || readNow.has(candidate.id),
+                      );
                     }
                   }}
                   className={cn(
@@ -173,6 +224,20 @@ export function CandidateTable({
                     selectedId === candidate.id && "bg-accent/60",
                   )}
                 >
+                  {/* Unread marker. A dot rather than bold text: the row
+                      already carries a score badge and a status pill, and
+                      re-weighting the whole row for this would compete with
+                      both. Purely decorative — the accessible name is on the
+                      row's aria-label. */}
+                  <TableCell className="w-6 pr-0">
+                    {candidate.readAt === null && !readNow.has(candidate.id) ? (
+                      <span
+                        aria-hidden
+                        title="Not opened yet"
+                        className="block size-2 rounded-full bg-brand"
+                      />
+                    ) : null}
+                  </TableCell>
                   <TableCell>
                     {candidate.score === null ? (
                       <Badge
@@ -303,6 +368,7 @@ export function CandidateTable({
       </div>
 
       <CandidateDetailSheet
+        canDecide={canDecide}
         candidate={selected}
         open={selected !== null}
         onOpenChange={(open) => {

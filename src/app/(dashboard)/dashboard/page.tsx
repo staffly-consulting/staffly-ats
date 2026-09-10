@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 
 import { getTranslations } from "next-intl/server";
+import { cookies } from "next/headers";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 import type { JobPostStatus } from "@prisma/client";
 import { Briefcase, Inbox, Plus, Target, TrendingUp } from "lucide-react";
@@ -12,7 +14,12 @@ import { StatTile } from "@/components/dashboard/stat-tile";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { requireOrgContext } from "@/lib/auth";
-import { listJobPosts, type JobPostSummary } from "@/lib/job-posts";
+import {
+  listArchivedJobPosts,
+  listJobPosts,
+  type JobPostSummary,
+} from "@/lib/job-posts";
+import { PENDING_PLAN_COOKIE, decodePendingPlan } from "@/lib/pending-plan";
 import { prisma } from "@/lib/prisma";
 import { SCORE_THRESHOLDS } from "@/lib/score";
 
@@ -27,14 +34,13 @@ export const dynamic = "force-dynamic";
 /** `labelKey` indexes the `dashboard` namespace; the label itself is resolved
  * at render so a translator never edits this list. */
 const TABS: { value: string; labelKey: string; match?: JobPostStatus[] }[] = [
+  // "All" deliberately excludes ARCHIVED — that is what the soft delete is for.
+  // `listJobPosts` already omits them, so no `match` is needed to enforce it.
   { value: "all", labelKey: "tabAll" },
   { value: "open", labelKey: "tabOpen", match: ["OPEN"] },
   { value: "draft", labelKey: "tabDraft", match: ["DRAFT"] },
-  {
-    value: "archived",
-    labelKey: "tabArchived",
-    match: ["CLOSED", "ARCHIVED"],
-  },
+  { value: "closed", labelKey: "tabClosed", match: ["CLOSED"] },
+  { value: "archived", labelKey: "tabArchived", match: ["ARCHIVED"] },
 ];
 
 async function JobGrid({ jobs }: { jobs: JobPostSummary[] }) {
@@ -68,14 +74,29 @@ async function JobGrid({ jobs }: { jobs: JobPostSummary[] }) {
 
 export default async function DashboardPage() {
   const { orgId } = await requireOrgContext();
+
+  // A plan chosen on /pricing before signing up. This is the first org-scoped
+  // page a new user reaches — Clerk's fallback redirect and
+  // `select-org`'s `afterCreateOrganizationUrl` both land here — so it is where
+  // the purchase gets picked back up. The redirect cannot loop: the target is a
+  // different route, and both of its exits clear the cookie.
+  const pendingPlan = decodePendingPlan(
+    (await cookies()).get(PENDING_PLAN_COOKIE)?.value,
+  );
+  if (pendingPlan) redirect("/dashboard/checkout");
+
   const t = await getTranslations("dashboard");
 
-  const [organization, jobs] = await Promise.all([
+  const [organization, jobs, archivedJobs] = await Promise.all([
     prisma.organization.findUnique({
       where: { id: orgId },
       select: { name: true },
     }),
     listJobPosts(orgId),
+    // Fetched separately rather than by relaxing the list above: every stat and
+    // every other tab on this page is computed from `jobs`, and a soft-deleted
+    // post must not be counted in any of them.
+    listArchivedJobPosts(orgId),
   ]);
 
   const openJobs = jobs.filter((job) => job.status === "OPEN");
@@ -83,8 +104,8 @@ export default async function DashboardPage() {
     (sum, job) => sum + job.stats.applicantCount,
     0,
   );
-  const totalShortlisted = jobs.reduce(
-    (sum, job) => sum + job.stats.shortlistedCount,
+  const totalStrongMatches = jobs.reduce(
+    (sum, job) => sum + job.stats.strongMatchCount,
     0,
   );
   const scoredJobs = jobs.filter((job) => job.stats.averageScore !== null);
@@ -138,8 +159,10 @@ export default async function DashboardPage() {
         />
         <StatTile
           label={t("statAboveThreshold")}
-          value={totalShortlisted}
-          hint={t("statScoringOrHigher", { threshold: SCORE_THRESHOLDS.strong })}
+          value={totalStrongMatches}
+          hint={t("statScoringOrHigher", {
+            threshold: SCORE_THRESHOLDS.strong,
+          })}
           icon={Target}
           valueClassName="text-success"
         />
@@ -163,9 +186,11 @@ export default async function DashboardPage() {
           <TabsContent key={tab.value} value={tab.value}>
             <JobGrid
               jobs={
-                tab.match
-                  ? jobs.filter((job) => tab.match?.includes(job.status))
-                  : jobs
+                tab.value === "archived"
+                  ? archivedJobs
+                  : tab.match
+                    ? jobs.filter((job) => tab.match?.includes(job.status))
+                    : jobs
               }
             />
           </TabsContent>

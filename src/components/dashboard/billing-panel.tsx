@@ -1,4 +1,4 @@
-import { Check, CreditCard, Lock, TriangleAlert } from "lucide-react";
+import { Check, CreditCard, Lock, Sparkles, TriangleAlert } from "lucide-react";
 
 import { BillingActions } from "@/components/dashboard/billing-actions";
 import { Badge } from "@/components/ui/badge";
@@ -16,8 +16,13 @@ import {
   FEATURES,
   FEATURE_LABELS,
   PLANS,
+  TRIAL_PERIOD_DAYS,
   hasFeature,
+  isTrialEligible,
+  isTrialing,
+  needsFirstSubscription,
   nextPoolReset,
+  priceFor,
   requiredTierFor,
   subscriptionIsActive,
   type Feature,
@@ -31,19 +36,33 @@ import { cn, formatDate } from "@/lib/utils";
  * itself on whether Stripe is fully configured rather than assuming it is.
  */
 
-function statusTone(status: string | null): {
+function statusTone(
+  status: string | null,
+  /** `requiresSubscription: false` — billed out of band, or not at all. */
+  managed: boolean,
+): {
   label: string;
   className: string;
 } {
   if (!status) {
-    return {
-      label: "No subscription",
-      className: "bg-muted text-muted-foreground border-border",
-    };
+    // Two very different orgs share a null status. One has not bought yet and
+    // should be sold to; the other is an internal or negotiated account that is
+    // never billed through Checkout. Showing the second one "No subscription"
+    // next to a trial button reads as a broken account rather than a managed
+    // one.
+    return managed
+      ? {
+          label: "Managed account",
+          className: "border-brand/25 bg-brand/10 text-brand",
+        }
+      : {
+          label: "No subscription",
+          className: "bg-muted text-muted-foreground border-border",
+        };
   }
   if (status === "active" || status === "trialing") {
     return {
-      label: status === "trialing" ? "Trialing" : "Active",
+      label: status === "trialing" ? "Free trial" : "Active",
       className: "border-success/25 bg-success/12 text-success",
     };
   }
@@ -69,8 +88,19 @@ export function BillingPanel({
 }) {
   const plan = PLANS[billing.planTier];
   const { quota } = billing;
-  const status = statusTone(billing.stripeSubscriptionStatus);
+  const managed = !billing.requiresSubscription;
+  const status = statusTone(billing.stripeSubscriptionStatus, managed);
   const active = subscriptionIsActive(billing);
+  const trialing = isTrialing(billing);
+  const firstPurchase = needsFirstSubscription(billing);
+  // Only sell a trial to an org the paywall actually applies to. An internal or
+  // negotiated account has nothing to trial — it already has full access — and
+  // offering it one invites someone to attach a Stripe subscription to an org
+  // that was deliberately kept off billing.
+  const offerTrial = billing.requiresSubscription && isTrialEligible(billing);
+  // Null until the first subscription exists; monthly is what the plan dialog
+  // opens on, so quoting the same avoids a figure that changes under them.
+  const interval = billing.billingInterval ?? "MONTHLY";
 
   const features = Object.values(FEATURES) as Feature[];
 
@@ -104,6 +134,10 @@ export function BillingPanel({
 
         {/* The same date means opposite things depending on whether the
             customer has cancelled, so the label carries the meaning. */}
+        {/* During a trial `currentPeriodEnd` IS the trial end — Stripe sets the
+            flat item's period to the trial window — so the same field carries
+            three different meanings and the label has to disambiguate all
+            three, not just cancelled-versus-renewing. */}
         {billing.currentPeriodEnd ? (
           <p className="-mt-3 text-xs text-muted-foreground">
             {billing.cancelAtPeriodEnd ? (
@@ -112,6 +146,18 @@ export function BillingPanel({
                 <span className="font-medium text-foreground">
                   {formatDate(billing.currentPeriodEnd)}
                 </span>
+              </>
+            ) : trialing ? (
+              <>
+                Free trial ends{" "}
+                <span className="font-medium text-foreground">
+                  {formatDate(billing.currentPeriodEnd)}
+                </span>
+                {" · then "}
+                <span className="font-medium text-foreground">
+                  ${priceFor(billing.planTier, interval).toLocaleString()}
+                </span>
+                {interval === "ANNUAL" ? " per year" : " per month"}
               </>
             ) : (
               <>
@@ -127,12 +173,35 @@ export function BillingPanel({
           </p>
         ) : null}
 
+        {trialing ? (
+          <div className="flex items-start gap-2 rounded-md border border-brand/25 bg-brand/5 px-3 py-2 text-xs leading-relaxed">
+            <Sparkles className="mt-0.5 size-3.5 shrink-0 text-brand" />
+            <span>
+              Applications you receive during the trial count towards your pool
+              but are never charged as overage. Cancel before the trial ends and
+              you pay nothing.
+            </span>
+          </div>
+        ) : null}
+
+        {/* Two different failures wearing one banner is how a customer ends up
+            reading "no longer active" about a subscription they never had. */}
         {!active ? (
           <div className="flex items-start gap-2 rounded-md border border-danger/25 bg-danger/10 px-3 py-2 text-xs leading-relaxed text-danger">
             <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
             <span>
-              This subscription is no longer active, so paid features are
-              locked. Existing candidates and job posts are untouched.
+              {firstPurchase ? (
+                <>
+                  Choose a plan to start using Staffly. Your first{" "}
+                  {TRIAL_PERIOD_DAYS} days are free, and you can cancel within
+                  them without being charged.
+                </>
+              ) : (
+                <>
+                  This subscription is no longer active, so paid features are
+                  locked. Existing candidates and job posts are untouched.
+                </>
+              )}
             </span>
           </div>
         ) : null}
@@ -182,7 +251,8 @@ export function BillingPanel({
 
           {billing.poolCycleAnchor ? (
             <p className="text-xs text-muted-foreground">
-              Pool resets {formatDate(
+              Pool resets{" "}
+              {formatDate(
                 nextPoolReset(new Date(billing.poolCycleAnchor)).toISOString(),
               )}
             </p>
@@ -233,6 +303,7 @@ export function BillingPanel({
         <BillingActions
           currentTier={billing.planTier}
           hasSubscription={billing.stripeSubscriptionId !== null}
+          offerTrial={offerTrial}
           configured={stripeConfigured}
           cancelAtPeriodEnd={billing.cancelAtPeriodEnd}
           currentPeriodEnd={billing.currentPeriodEnd}

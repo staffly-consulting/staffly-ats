@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 
-import { getOrgContext } from "@/lib/auth";
+import { checkPermission, getOrgContext } from "@/lib/auth";
 import { checkFeature } from "@/lib/entitlements";
+import { PERMISSIONS } from "@/lib/permissions";
 import { FEATURES } from "@/lib/plans";
 import { updateJobPost } from "@/lib/job-posts";
 import { jobPostApiSchema } from "@/lib/validations/job-post";
@@ -35,6 +36,17 @@ export async function PATCH(
     );
   }
   const { orgId } = context;
+
+  // 403, not 401 — see the POST handler for why.
+  if (!(await checkPermission(context, PERMISSIONS.JOB_POST_WRITE))) {
+    return NextResponse.json(
+      {
+        error:
+          "Your role does not allow editing job posts. Ask an admin in your organization to change your role.",
+      },
+      { status: 403 },
+    );
+  }
 
   let payload: unknown;
   try {

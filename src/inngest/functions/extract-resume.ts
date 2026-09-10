@@ -28,6 +28,17 @@ export const extractResumeFunction = inngest.createFunction(
     // reach here — they resolve to ERROR inside the step and return normally.
     retries: 3,
     concurrency: { key: "event.data.orgId", limit: 3 },
+    // Per-org ceiling on model calls, independent of what triggered them.
+    //
+    // `concurrency` above paces work; it does not bound it — three at a time,
+    // forever, is still unbounded spend. This is the bound. It sits below the
+    // per-candidate cap in `candidate-actions.ts` because the two catch
+    // different things: that one stops one candidate being re-run in a loop,
+    // this one stops any single tenant becoming the whole Anthropic bill.
+    //
+    // Sized well above real ingestion — a busy agency forwarding a morning's
+    // applications stays under it — so it only bites on a runaway.
+    throttle: { key: "event.data.orgId", limit: 30, period: "1m" },
     triggers: [{ event: "candidate/created" }],
   },
   async ({ event, step, logger }) => {
@@ -96,6 +107,11 @@ export const extractResumeFunction = inngest.createFunction(
           source: { kind: "text" as const, text: parsed.text },
           via: `text layer${parsed.pages ? ` (${parsed.pages}p)` : ""}`,
           chars: parsed.text.length,
+          // Already removed from `text` above. Carried out of the step so the
+          // attempt can be recorded on the candidate — a resume that tried to
+          // instruct the screener is something the recruiter should see, not
+          // something we quietly clean up and forget.
+          hidden: parsed.hidden?.summary ?? null,
         };
       }
 
@@ -112,6 +128,9 @@ export const extractResumeFunction = inngest.createFunction(
         },
         via: `document input (${parsed.reason})`,
         chars: 0,
+        // The vision path needs no scan: text drawn invisibly is as invisible
+        // to a model reading the rendered page as it is to a person.
+        hidden: null,
       };
     });
 
@@ -130,6 +149,18 @@ export const extractResumeFunction = inngest.createFunction(
         `[extract-resume] cannot read ${filename} for ${candidateId}: ${prepared.failure}`,
       );
       return { status: "ERROR", reason: prepared.failure };
+    }
+
+    // Recorded before extraction runs, so the finding survives even if the
+    // model call then fails and the candidate lands in ERROR.
+    if (prepared.hidden) {
+      await step.run("record-hidden-text", () =>
+        prisma.candidate.updateMany({
+          where: { id: candidateId, orgId },
+          data: { hiddenTextFound: true, hiddenTextNote: prepared.hidden },
+        }),
+      );
+      logger.warn(`[extract-resume] ${candidateId}: ${prepared.hidden}`);
     }
 
     logger.info(

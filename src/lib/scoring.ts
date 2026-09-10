@@ -57,6 +57,12 @@ export interface ScoringInputs {
   candidateUniversity: string | null;
   /** Names of the job post's preferred universities. */
   preferredUniversityNames: string[];
+  /**
+   * Description of text found hidden in the resume, or null when there was
+   * none. Set by the deterministic scan in `lib/hidden-text.ts`, never by the
+   * model — a claim about manipulation must not itself be manipulable.
+   */
+  hiddenTextNote?: string | null;
 }
 
 const UNIVERSITY_STOPWORDS = new Set([
@@ -202,8 +208,22 @@ function evaluateFlags(context: {
   bonusApplied: number;
   referralBonusApplied: number;
   missingJudgements: string[];
+  /** Set when the resume carried text hidden from human readers. */
+  hiddenTextNote: string | null;
 }): { flagged: boolean; flagReason: string | null } {
   const reasons: string[] = [];
+
+  // A deliberate attempt to manipulate the screener. The text itself never
+  // reached the model — it is stripped in `lib/hidden-text.ts` — so the score
+  // is already honest. This flag exists so the ATTEMPT reaches a person.
+  //
+  // Deliberately not an auto-rejection, for the same reason nothing else here
+  // is: a false positive would silently discard a real applicant, and the
+  // detector cannot tell a hidden instruction from a stray invisible artefact
+  // of whatever tool built the PDF. A human decides what it means.
+  if (context.hiddenTextNote) {
+    reasons.push(context.hiddenTextNote);
+  }
 
   // The model failed to judge something. Those criteria were counted as unmet,
   // which is the safe direction, but a human should confirm.
@@ -386,6 +406,7 @@ export function computeScore(inputs: ScoringInputs): ScoringResult {
     bonusApplied: referralBonusApplied + universityBonusApplied,
     referralBonusApplied,
     missingJudgements,
+    hiddenTextNote: inputs.hiddenTextNote ?? null,
   });
 
   return {

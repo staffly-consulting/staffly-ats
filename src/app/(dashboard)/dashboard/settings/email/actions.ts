@@ -2,12 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 
-import { requireOrgContext } from "@/lib/auth";
+import { permissionError, requireOrgContext } from "@/lib/auth";
 import {
   connectEmailInbox,
   disconnectEmailInbox,
   type EmailInboxSummary,
 } from "@/lib/email-inbox";
+import { PERMISSIONS } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 
 export type InboxActionResult =
@@ -16,11 +17,15 @@ export type InboxActionResult =
 /**
  * Generates the org's forwarding alias, or reactivates an existing one.
  *
- * TODO(roles): this is an org-level configuration change that any member can
- * currently perform. Gate on `OrgRole.ADMIN` once role enforcement lands.
+ * Admin-only: this is the pipe every application arrives through, and changing
+ * it affects the whole organization rather than one recruiter's work.
  */
 export async function connectInboxAction(): Promise<InboxActionResult> {
-  const { orgId } = await requireOrgContext();
+  const context = await requireOrgContext();
+  const { orgId } = context;
+
+  const denied = await permissionError(context, PERMISSIONS.INBOX_MANAGE);
+  if (denied) return denied;
 
   const organization = await prisma.organization.findUnique({
     where: { id: orgId },
@@ -48,7 +53,11 @@ export async function connectInboxAction(): Promise<InboxActionResult> {
 export async function disconnectInboxAction(): Promise<
   { ok: true } | { ok: false; error: string }
 > {
-  const { orgId } = await requireOrgContext();
+  const context = await requireOrgContext();
+  const { orgId } = context;
+
+  const denied = await permissionError(context, PERMISSIONS.INBOX_MANAGE);
+  if (denied) return denied;
 
   try {
     await disconnectEmailInbox(orgId);
