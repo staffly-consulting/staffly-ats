@@ -88,6 +88,43 @@ export async function POST(request: Request) {
 
   const email = normalizeInboundEmail(parsed.data);
 
+  // Staging instrumentation. The payload shape is the one assumption this
+  // pipeline rests on, so log what actually arrived — every field that decides
+  // whether the resume is reachable — before anything acts on it.
+  //
+  // Deliberately no body text and no sender name: this line ends up in a hosting
+  // provider's log retention, and an applicant's covering letter does not belong
+  // there. Ids, filenames and counts answer every question staging asks.
+  {
+    const envelope = "data" in parsed.data ? parsed.data.data : parsed.data;
+    console.log(
+      `[resend-inbound] RECEIVED type=${
+        "type" in parsed.data ? (parsed.data.type ?? "none") : "flat"
+      } keys=[${Object.keys(envelope).join(",")}]`,
+    );
+    console.log(
+      `[resend-inbound]   messageId=${email.messageId} providerEmailId=${
+        email.providerEmailId ?? "MISSING"
+      } recipients=${email.recipients.length} attachments=${email.attachments.length} text=${
+        email.text?.length ?? 0
+      }ch`,
+    );
+    email.attachments.forEach((attachment, index) => {
+      console.log(
+        `[resend-inbound]   att[${index}] id=${attachment.id ?? "MISSING"} file="${
+          attachment.filename
+        }" type=${attachment.contentType} inline=${attachment.inline} content=${
+          attachment.content ? "inline" : "no"
+        } url=${attachment.url ? "yes" : "no"}`,
+      );
+    });
+    if (!email.providerEmailId) {
+      console.error(
+        "[resend-inbound] no provider email id on payload — attachment bytes will be UNREACHABLE; check the field name in src/lib/inbound-email.ts",
+      );
+    }
+  }
+
   if (email.recipients.length === 0) {
     console.warn(
       `[resend-inbound] message ${email.messageId} has no recipients; ignoring`,
@@ -120,6 +157,7 @@ export async function POST(request: Request) {
         orgId: inbox.orgId,
         emailInboxId: inbox.id,
         messageId: email.messageId,
+        providerEmailId: email.providerEmailId,
         fromEmail: email.fromEmail,
         fromName: email.fromName,
         subject: email.subject,

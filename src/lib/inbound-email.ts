@@ -40,6 +40,12 @@ const addressSchema = z.union([
 const addressListSchema = z.union([addressSchema, z.array(addressSchema)]);
 
 const attachmentSchema = z.object({
+  /**
+   * Resend's attachment id. This is the ONLY handle on the bytes: the webhook
+   * carries metadata only, so the body is fetched later via
+   * `resolveAttachmentDownload` in `src/lib/resend-inbound.ts`.
+   */
+  id: z.string().nullish(),
   filename: z.string().nullish(),
   name: z.string().nullish(),
   content_type: z.string().nullish(),
@@ -54,6 +60,8 @@ const attachmentSchema = z.object({
   content_id: z.string().nullish(),
   /** Set by some providers on inline images (signatures, logos). */
   disposition: z.string().nullish(),
+  /** Resend's spelling of the same field. */
+  content_disposition: z.string().nullish(),
 });
 
 const inboundDataSchema = z.object({
@@ -85,6 +93,12 @@ export const inboundEmailPayloadSchema = z.union([
 /* -------------------------------------------------------------------------- */
 
 export interface InboundAttachment {
+  /**
+   * Provider-side attachment id. With Resend this is how the bytes are found —
+   * the webhook has no body and no URL, so ingestion trades this id for a
+   * short-lived download URL at the moment it needs it.
+   */
+  id?: string;
   filename: string;
   contentType: string;
   /** Base64 body when delivered inline. */
@@ -100,6 +114,15 @@ export interface InboundAttachment {
 export interface NormalizedInboundEmail {
   /** Provider message id, or a synthesized one when absent. */
   messageId: string;
+  /**
+   * Resend's own `email_id`, when the payload carried one.
+   *
+   * Kept separate from `messageId`, which may have fallen back to the RFC
+   * `Message-ID` or to a synthesized value — neither of which Resend's API can
+   * be queried with. Null here means the body and attachments are unfetchable,
+   * so it is checked rather than assumed at the call site.
+   */
+  providerEmailId: string | null;
   fromEmail: string | null;
   fromName: string | null;
   /** Every recipient, lowercased. One of these is our forwarding alias. */
@@ -164,6 +187,7 @@ export function normalizeInboundEmail(
 
   const attachments: InboundAttachment[] = (data.attachments ?? []).map(
     (attachment, index) => ({
+      id: attachment.id ?? undefined,
       filename: attachment.filename ?? attachment.name ?? `attachment-${index}`,
       contentType:
         attachment.content_type ??
@@ -175,10 +199,19 @@ export function normalizeInboundEmail(
       size: attachment.size ?? undefined,
       // `content_id` set with no explicit disposition is the classic marker of
       // an image embedded in the signature rather than a real attachment.
-      inline:
-        attachment.disposition === "inline" ||
-        (Boolean(attachment.content_id) &&
-          attachment.disposition !== "attachment"),
+      //
+      // Both spellings are consulted: Resend sends `content_disposition`, so
+      // reading only `disposition` would leave it undefined and let the
+      // `content_id` heuristic misfile a genuine attachment that happens to
+      // carry one — a real CV, dropped before triage, with no error anywhere.
+      inline: (() => {
+        const disposition =
+          attachment.disposition ?? attachment.content_disposition;
+        return (
+          disposition === "inline" ||
+          (Boolean(attachment.content_id) && disposition !== "attachment")
+        );
+      })(),
     }),
   );
 
@@ -189,6 +222,7 @@ export function normalizeInboundEmail(
       data.id ??
       // No provider id: fall back to something stable enough for an audit path.
       `inbound-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+    providerEmailId: data.email_id ?? data.id ?? null,
     fromEmail: from.email,
     fromName: from.name,
     recipients,

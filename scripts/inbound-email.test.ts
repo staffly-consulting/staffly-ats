@@ -209,6 +209,118 @@ check(
     .length === 1,
 );
 
+console.log("\n--- Resend email.received: metadata only ---");
+//
+// The real payload. Resend sends NO body and NO attachment bytes — just ids and
+// filenames — because inlining a 10 MB CV would exceed the request-body limit
+// of most serverless platforms. The bytes are fetched afterwards from
+// `/emails/receiving/{id}/attachments`, which is keyed on `email_id` plus the
+// attachment id, so these two fields surviving normalization is the difference
+// between a working pipeline and one that silently ingests nothing.
+const metadataOnly = parse({
+  type: "email.received",
+  created_at: "2026-09-11T09:00:00Z",
+  data: {
+    email_id: "4ef9a417-02e9-4d39-ad75-9611e0fcc33c",
+    from: "Ada Lovelace <ada@example.com>",
+    to: ["acme-ab12cd34@mail.stafflyconsulting.com"],
+    received_for: ["acme-ab12cd34@mail.stafflyconsulting.com"],
+    message_id: "<CAF=abc@mail.gmail.com>",
+    subject: "Application for Backend Engineer",
+    attachments: [
+      {
+        id: "att_9f2b",
+        filename: "ada-lovelace-cv.pdf",
+        content_type: "application/pdf",
+        content_disposition: "attachment",
+      },
+    ],
+  },
+});
+
+check("metadata-only payload parses", metadataOnly !== null);
+check(
+  "provider email id captured for the attachments API",
+  metadataOnly?.providerEmailId === "4ef9a417-02e9-4d39-ad75-9611e0fcc33c",
+);
+check("attachment id captured", metadataOnly?.attachments[0].id === "att_9f2b");
+check(
+  "no inline content, as Resend sends none",
+  metadataOnly?.attachments[0].content === undefined,
+);
+check(
+  "no url either — it is minted later, per download",
+  metadataOnly?.attachments[0].url === undefined,
+);
+check(
+  "body is absent until fetched",
+  metadataOnly?.text === null && metadataOnly?.html === null,
+);
+// Triage runs on metadata alone, before any byte is fetched. If this regressed,
+// every resume would be discarded before the download step was ever reached.
+check(
+  "resume still survives triage without bytes",
+  classifyAttachment(metadataOnly!.attachments[0]).keep === true,
+);
+check(
+  "sender name parsed from angled address",
+  metadataOnly?.fromName === "Ada Lovelace" &&
+    metadataOnly?.fromEmail === "ada@example.com",
+);
+
+// A payload with no provider id cannot be hydrated at all; ingestion reports the
+// attachment as skipped rather than failing the run. Assert the signal it keys
+// on rather than the behaviour, which lives in the Inngest function.
+const noProviderId = parse({
+  message_id: "<no-resend-id@example.com>",
+  from: "x@example.com",
+  to: "alias@mail.stafflyconsulting.com",
+  attachments: [{ filename: "cv.pdf", content_type: "application/pdf" }],
+});
+check(
+  "missing provider id is null, not a fabricated value",
+  noProviderId?.providerEmailId === null,
+);
+
+// Resend spells it `content_disposition`. Reading only `disposition` would leave
+// it undefined, and the content_id heuristic would then file a real CV as an
+// inline signature image — discarded at triage, no error raised anywhere.
+const dispositionSpelling = parse({
+  email_id: "msg_disp",
+  from: "c@example.com",
+  to: "alias@mail.stafflyconsulting.com",
+  attachments: [
+    {
+      id: "att_logo",
+      filename: "logo.png",
+      content_type: "image/png",
+      content_disposition: "inline",
+      content_id: "logo@sig",
+    },
+    {
+      id: "att_cv",
+      filename: "cv.pdf",
+      content_type: "application/pdf",
+      content_disposition: "attachment",
+      content_id: "cv@weird", // present, but explicitly an attachment
+    },
+  ],
+});
+check(
+  "content_disposition inline is honoured",
+  dispositionSpelling?.attachments[0].inline === true,
+);
+check(
+  "content_disposition attachment beats a stray content_id",
+  dispositionSpelling?.attachments[1].inline === false,
+);
+check(
+  "the CV, not the logo, survives triage",
+  (dispositionSpelling?.attachments ?? []).filter(
+    (a) => classifyAttachment(a).keep,
+  ).length === 1,
+);
+
 console.log(
   failures === 0 ? "\nALL CHECKS PASSED\n" : `\n${failures} CHECK(S) FAILED\n`,
 );

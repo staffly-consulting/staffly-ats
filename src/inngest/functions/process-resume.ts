@@ -6,6 +6,10 @@ import {
   type InboundAttachment,
 } from "@/lib/inbound-email";
 import { prisma } from "@/lib/prisma";
+import {
+  fetchReceivedEmailBody,
+  resolveAttachmentDownload,
+} from "@/lib/resend-inbound";
 import { recordApplicationUsage } from "@/lib/usage";
 import {
   rawEmailObjectPath,
@@ -30,30 +34,91 @@ import {
 
 type ResumeReceived = StafflyEvents["resume/received"];
 
+/**
+ * Bytes for one attachment.
+ *
+ * Three sources, in order of directness:
+ *
+ *   1. `content` — inline base64. No provider we use does this, but the seam
+ *      accepts it and decoding is free.
+ *   2. `url` — a body URL already on the payload.
+ *   3. Resend's attachments API, keyed on `providerEmailId` + the attachment
+ *      id. This is the real path: `email.received` carries metadata only.
+ *
+ * Called from inside the upload step on purpose. The URL from (3) is presigned
+ * and expires in about an hour, so minting it in an earlier memoized step would
+ * mean a retry the next day replaying a dead link and silently losing a
+ * candidate. Mint and download are one unit of work.
+ */
 async function loadAttachmentBody(
   attachment: InboundAttachment,
+  providerEmailId: string | null,
 ): Promise<{ base64: string; bytes: number } | { error: string }> {
   if (attachment.content) {
     const bytes = Buffer.from(attachment.content, "base64").byteLength;
     if (bytes > MAX_ATTACHMENT_BYTES) {
       return { error: `too large after decode (${bytes} bytes)` };
     }
+    console.log(
+      `[process-resume] FETCH "${attachment.filename}" source=inline bytes=${bytes}`,
+    );
     return { base64: attachment.content, bytes };
   }
 
-  if (!attachment.url) {
-    return { error: "attachment has neither inline content nor a URL" };
+  let sourceUrl = attachment.url;
+  let source = sourceUrl ? "payload-url" : "resend-api";
+
+  if (!sourceUrl) {
+    if (!providerEmailId) {
+      return {
+        error:
+          "attachment has no inline content, no URL, and no Resend email id to fetch it with",
+      };
+    }
+
+    const resolved = await resolveAttachmentDownload(providerEmailId, {
+      id: attachment.id,
+      filename: attachment.filename,
+    });
+
+    if (!resolved?.downloadUrl) {
+      return {
+        error: `Resend has no download URL for attachment ${attachment.id ?? attachment.filename}`,
+      };
+    }
+
+    // Resend reports the real size here; the webhook does not. Check it before
+    // spending the bandwidth.
+    if (resolved.size && resolved.size > MAX_ATTACHMENT_BYTES) {
+      return { error: `too large (${resolved.size} bytes)` };
+    }
+
+    sourceUrl = resolved.downloadUrl;
+    source = "resend-api";
+    console.log(
+      `[process-resume] FETCH "${attachment.filename}" source=resend-api declaredSize=${
+        resolved.size ?? "?"
+      } urlExpires=${resolved.expiresAt ?? "?"}`,
+    );
   }
 
-  // Some providers hand back a URL instead of inlining the body. Authenticate
-  // when we have a key — a public URL simply ignores the header.
-  const response = await fetch(attachment.url, {
-    headers: process.env.RESEND_API_KEY
-      ? { Authorization: `Bearer ${process.env.RESEND_API_KEY}` }
-      : undefined,
+  // A presigned URL carries its own credentials in the query string, and S3-style
+  // backends reject a request that ALSO sends an Authorization header. So the
+  // key goes out only for a URL that came from the payload — never for one the
+  // attachments API just minted.
+  const isPresigned = sourceUrl !== attachment.url;
+  const response = await fetch(sourceUrl, {
+    headers:
+      !isPresigned && process.env.RESEND_API_KEY
+        ? { Authorization: `Bearer ${process.env.RESEND_API_KEY}` }
+        : undefined,
   });
 
   if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    console.error(
+      `[process-resume] DOWNLOAD failed ${response.status} source=${source} file="${attachment.filename}" :: ${detail.slice(0, 200)}`,
+    );
     return { error: `download failed with ${response.status}` };
   }
 
@@ -66,6 +131,12 @@ async function loadAttachmentBody(
   if (buffer.byteLength > MAX_ATTACHMENT_BYTES) {
     return { error: `too large (${buffer.byteLength} bytes)` };
   }
+
+  console.log(
+    `[process-resume] DOWNLOAD ok source=${source} file="${attachment.filename}" bytes=${buffer.byteLength} contentType=${
+      response.headers.get("content-type") ?? "?"
+    }`,
+  );
 
   return { base64: buffer.toString("base64"), bytes: buffer.byteLength };
 }
@@ -83,7 +154,13 @@ export const processInboundResume = inngest.createFunction(
   },
   async ({ event, step, logger }) => {
     const data = event.data as ResumeReceived;
-    const { orgId, messageId } = data;
+    const { orgId, messageId, providerEmailId } = data;
+
+    logger.info(
+      `[process-resume] START org=${orgId} messageId=${messageId} providerEmailId=${
+        providerEmailId ?? "MISSING"
+      } attachments=${data.attachments.length}`,
+    );
 
     // ---------------------------------------------------------------------
     // 1. Decide which attachments are resumes.
@@ -112,6 +189,12 @@ export const processInboundResume = inngest.createFunction(
       return { keep, skipped };
     });
 
+    logger.info(
+      `[process-resume] TRIAGE kept=${triage.keep.length} skipped=${triage.skipped.length} :: keeping [${triage.keep
+        .map((k) => k.filename)
+        .join(", ")}]`,
+    );
+
     for (const skip of triage.skipped) {
       logger.warn(
         `[process-resume] skipped attachment "${skip.filename}": ${skip.reason}`,
@@ -132,16 +215,62 @@ export const processInboundResume = inngest.createFunction(
     }
 
     // ---------------------------------------------------------------------
-    // 2. Archive the raw email once per message.
+    // 2. Fetch the body Resend did not send.
+    //
+    // `email.received` has no `text`/`html`, so without this the archive would
+    // record an empty message and any future body-based matching would have
+    // nothing to read. Unlike the attachment URLs this response does not
+    // expire, so it is safe in a memoized step of its own.
+    //
+    // Never fatal: the body is context, the attachment is the product. An
+    // archive missing its covering note is worth strictly more than a run that
+    // aborted before ingesting the CV.
+    // ---------------------------------------------------------------------
+    const body = await step.run("fetch-email-body", async () => {
+      if (data.text) {
+        logger.info(
+          `[process-resume] BODY source=webhook len=${data.text.length}ch`,
+        );
+        return { text: data.text, html: null as string | null };
+      }
+      if (!providerEmailId) {
+        logger.warn(
+          "[process-resume] BODY source=none (no providerEmailId) — archive will have no message text",
+        );
+        return { text: null, html: null };
+      }
+
+      try {
+        const fetched = await fetchReceivedEmailBody(providerEmailId);
+        logger.info(
+          `[process-resume] BODY source=resend-api text=${fetched.text?.length ?? 0}ch html=${
+            fetched.html?.length ?? 0
+          }ch`,
+        );
+        return { text: fetched.text, html: fetched.html };
+      } catch (error) {
+        logger.warn(
+          `[process-resume] could not fetch body for ${messageId}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+        return { text: null, html: null };
+      }
+    });
+
+    // ---------------------------------------------------------------------
+    // 3. Archive the raw email once per message.
     // ---------------------------------------------------------------------
     const rawEmailKey = await step.run("archive-raw-email", async () => {
       const path = rawEmailObjectPath(orgId, messageId);
       const archive = {
         messageId,
+        providerEmailId,
         receivedAt: data.receivedAt,
         from: { email: data.fromEmail, name: data.fromName },
         subject: data.subject,
-        text: data.text,
+        text: body.text,
+        html: body.html,
         attachments: data.attachments.map((attachment) => ({
           filename: attachment.filename,
           contentType: attachment.contentType,
@@ -161,7 +290,7 @@ export const processInboundResume = inngest.createFunction(
     });
 
     // ---------------------------------------------------------------------
-    // 3. Allocate candidate ids up front.
+    // 4. Allocate candidate ids up front.
     //
     // The storage path embeds the candidate id, so the id has to exist before
     // the upload. Allocating inside a memoized step means a retry reuses the
@@ -172,7 +301,7 @@ export const processInboundResume = inngest.createFunction(
     );
 
     // ---------------------------------------------------------------------
-    // 4. One candidate per resume file.
+    // 5. One candidate per resume file.
     //
     // Agencies routinely forward a single email with several CVs attached. One
     // row per attachment is the only reading that does not silently drop
@@ -197,20 +326,23 @@ export const processInboundResume = inngest.createFunction(
         async (): Promise<
           { key: string; bytes: number } | { skipped: string }
         > => {
-          const body = await loadAttachmentBody(attachment);
+          const fileBody = await loadAttachmentBody(
+            attachment,
+            providerEmailId,
+          );
 
-          if ("error" in body) {
+          if ("error" in fileBody) {
             // A body we cannot fetch will not become fetchable on retry, so
             // fail the attachment rather than the run.
             logger.warn(
-              `[process-resume] dropping "${filename}" on ${messageId}: ${body.error}`,
+              `[process-resume] dropping "${filename}" on ${messageId}: ${fileBody.error}`,
             );
-            return { skipped: body.error };
+            return { skipped: fileBody.error };
           }
 
           const stored = await uploadObject(
             resumeObjectPath(orgId, candidateId, filename),
-            Buffer.from(body.base64, "base64"),
+            Buffer.from(fileBody.base64, "base64"),
             target.contentType,
           );
           return { key: stored.key, bytes: stored.bytes };
@@ -297,8 +429,13 @@ export const processInboundResume = inngest.createFunction(
       );
     }
 
+    // One line that answers "did staging work?" without reading the rest.
     logger.info(
-      `[process-resume] ${results.length} candidate(s) created for org ${orgId} from ${messageId}`,
+      `[process-resume] DONE org=${orgId} messageId=${messageId} created=${results.length} skippedAtTriage=${
+        triage.skipped.length
+      } failedToDownload=${triage.keep.length - results.length} bodySource=${
+        body.text ? "present" : "empty"
+      } rawEmailKey=${rawEmailKey}`,
     );
 
     return {

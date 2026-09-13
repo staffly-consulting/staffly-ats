@@ -163,7 +163,12 @@ export function IntervalToggle({
   return (
     <div
       className={cn(
-        "inline-flex rounded-lg border border-border p-0.5 text-sm",
+        // `w-fit` is load-bearing, not cosmetic. `inline-flex` sizes to content
+        // in normal flow, but a grid or flex-column parent stretches its items
+        // by default — and `DialogContent` is a grid, which made this toggle
+        // span the whole dialog and read as two full-width bars rather than a
+        // segmented control.
+        "inline-flex w-fit rounded-lg border border-border bg-muted/40 p-0.5 text-sm",
         className,
       )}
       role="group"
@@ -176,15 +181,22 @@ export function IntervalToggle({
           onClick={() => onChange(option)}
           aria-pressed={value === option}
           className={cn(
-            "rounded-md px-3 py-1.5 transition-colors",
+            "flex items-center gap-1.5 rounded-md px-3 py-1.5 font-medium transition-colors",
             value === option
-              ? "bg-brand text-brand-foreground"
+              ? "bg-brand text-brand-foreground shadow-sm"
               : "text-muted-foreground hover:text-foreground",
           )}
         >
           {option === "MONTHLY" ? "Monthly" : "Annual"}
           {option === "ANNUAL" && saving > 0 ? (
-            <span className="ml-1.5 text-xs opacity-80">save {saving}%</span>
+            // A solid success pill rather than dimmed text. This is the one
+            // number on the control that should change someone's mind, and at
+            // `opacity-80` it was quieter than the label it sat next to.
+            // Solid (not tinted) so it keeps its contrast on the brand fill
+            // when Annual is the selected side.
+            <span className="rounded-full bg-success px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-success-foreground uppercase tabular-nums">
+              Save {saving}%
+            </span>
           ) : null}
         </button>
       ))}

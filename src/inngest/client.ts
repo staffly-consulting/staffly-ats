@@ -19,6 +19,13 @@ export interface StafflyEvents {
     orgId: string;
     emailInboxId: string;
     messageId: string;
+    /**
+     * Resend's `email_id`. Required to fetch the body and attachment bytes —
+     * the `email.received` webhook carries neither. Null when the payload had
+     * no provider id, in which case the attachments are unreachable and the
+     * run reports them as skipped rather than failing.
+     */
+    providerEmailId: string | null;
     fromEmail: string | null;
     fromName: string | null;
     subject: string | null;
