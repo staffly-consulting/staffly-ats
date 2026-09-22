@@ -1,8 +1,9 @@
 "use client";
 
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 
+import { Loader2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { NAV_ITEMS } from "@/components/dashboard/nav-items";
@@ -27,6 +28,21 @@ function activeHref(pathname: string, hrefs: string[]): string | null {
     hrefs
       .filter((href) => matches(pathname, href))
       .sort((a, b) => b.length - a.length)[0] ?? null
+  );
+}
+
+/**
+ * Spinner on the link that was just clicked, until its page is on screen.
+ * Must render inside the `<Link>`: `useLinkStatus` reads the nearest one.
+ */
+function PendingIndicator() {
+  const { pending } = useLinkStatus();
+  if (!pending) return null;
+  return (
+    <Loader2
+      aria-hidden
+      className="ml-auto size-3.5 shrink-0 animate-spin text-muted-foreground"
+    />
   );
 }
 
@@ -82,7 +98,9 @@ export function SidebarNav({
               >
                 {tCommon("soon")}
               </Badge>
-            ) : null}
+            ) : (
+              <PendingIndicator />
+            )}
           </Link>
         );
       })}
