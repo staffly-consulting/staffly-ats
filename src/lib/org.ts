@@ -185,6 +185,10 @@ function describeClerkFailure(cause: unknown): string {
   return "Could not complete that change. Try again in a moment.";
 }
 
+function appUrl(): string {
+  return process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3100";
+}
+
 /**
  * Invites someone by email.
  *
@@ -219,7 +223,9 @@ export async function inviteMember(params: {
       // Where the invitee lands after accepting. `/dashboard` runs the layout
       // that provisions their tenant rows, so they arrive at a working app
       // rather than at a page that needs the webhook to have won a race.
-      redirectUrl: "/dashboard",
+      // Absolute: Clerk resolves a bare path against its own Account Portal
+      // host, which has no /dashboard.
+      redirectUrl: `${appUrl()}/dashboard`,
     });
   } catch (cause) {
     console.error(`[inviteMember] failed for org ${params.orgId}`, cause);
