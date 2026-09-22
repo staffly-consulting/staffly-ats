@@ -11,7 +11,7 @@ import { prisma } from "@/lib/prisma";
  * Batched rather than one email per failure. A single agency forwarding twenty
  * unreadable scans would otherwise send twenty emails in a minute, which is how
  * a notification becomes something people filter to trash. `batchEvents`
- * collects up to 25 failures per org over five minutes and sends one digest.
+ * collects up to 5 failures per org over five minutes and sends one digest.
  *
  * Fired from the error paths of the extraction and scoring functions — never
  * from a request handler, so a send that hangs cannot slow a page down.
@@ -25,7 +25,9 @@ export const notifyFailuresFunction = inngest.createFunction(
     name: "Notify org of processing failures",
     retries: 2,
     batchEvents: {
-      maxSize: 25,
+      // Inngest's free plan caps batch size at 5 and rejects the whole app
+      // sync above it. Raise once on a paid plan.
+      maxSize: 5,
       // Inngest types this window in seconds only.
       timeout: "300s",
       // Per org: one tenant's burst must not delay another's notification.

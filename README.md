@@ -559,7 +559,7 @@ end up in `ERROR`. That is the case with zero visibility otherwise — a resume
 that fails extraction never appears on a job post, so nobody learns a real
 application was dropped.
 
-Batched via Inngest (`maxSize: 25`, `timeout: 300s`, keyed per org): one agency
+Batched via Inngest (`maxSize: 5` — the Inngest free-plan cap, `timeout: 300s`, keyed per org): one agency
 forwarding twenty unreadable scans produces one email, not twenty. The batch is
 re-read from the database before sending, so a candidate that has since been
 retried successfully is not reported as failed.
