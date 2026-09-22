@@ -7,9 +7,11 @@
 import {
   classifyAttachment,
   inboundEmailPayloadSchema,
+  matchJobPostBySubject,
   normalizeInboundEmail,
   safeFilename,
   type InboundAttachment,
+  type JobPostTitleCandidate,
 } from "../src/lib/inbound-email";
 
 let failures = 0;
@@ -320,6 +322,48 @@ check(
     (a) => classifyAttachment(a).keep,
   ).length === 1,
 );
+
+console.log("\nauto-forwarded recipients");
+const forwarded = parse({
+  type: "email.received",
+  data: {
+    email_id: "fwd-1",
+    from: "Applicant <applicant@gmail.com>",
+    to: ["brian@stafflyconsulting.com"],
+    received_for: ["Acme-x7k2@mail.stafflyconsulting.com"],
+    subject: "Apply for Software Engineer",
+    attachments: [],
+  },
+});
+check(
+  "envelope alias is a recipient even when To: names the forwarder",
+  forwarded?.recipients.includes("acme-x7k2@mail.stafflyconsulting.com") === true,
+  forwarded?.recipients,
+);
+check(
+  "envelope recipient is tried first",
+  forwarded?.recipients[0] === "acme-x7k2@mail.stafflyconsulting.com",
+);
+
+console.log("\nmatchJobPostBySubject");
+const posts: JobPostTitleCandidate[] = [
+  { id: "swe", title: "Software Engineer", status: "OPEN", createdAt: "2026-09-01" },
+  { id: "senior", title: "Senior Software Engineer", status: "OPEN", createdAt: "2026-09-01" },
+  { id: "old-pm", title: "Product Manager", status: "ARCHIVED", createdAt: "2026-01-01" },
+  { id: "new-pm", title: "Product Manager", status: "CLOSED", createdAt: "2026-08-01" },
+  { id: "qa", title: "Q.A. Analyst", status: "ARCHIVED", createdAt: "2026-02-01" },
+];
+const matchId = (subject: string | null) =>
+  matchJobPostBySubject(subject, posts)?.id ?? null;
+
+check("plain subject matches", matchId("apply for software engineer") === "swe");
+check("case and punctuation ignored", matchId("Fwd: Apply for SOFTWARE-ENGINEER!") === "swe");
+check("longest title wins", matchId("Application: Senior Software Engineer") === "senior");
+check("archived post still matches", matchId("Re: QA Analyst role") === null && matchId("Q A analyst application") === "qa");
+check("same title prefers non-archived", matchId("Product Manager - Jane") === "new-pm");
+check("partial word does not match", matchId("Software Engineering Lead") === null);
+check("no subject, no match", matchId(null) === null);
+check("unrelated subject, no match", matchId("Hello there") === null);
 
 console.log(
   failures === 0 ? "\nALL CHECKS PASSED\n" : `\n${failures} CHECK(S) FAILED\n`,

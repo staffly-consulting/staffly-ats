@@ -2,6 +2,7 @@ import { inngest, type StafflyEvents } from "@/inngest/client";
 import {
   MAX_ATTACHMENT_BYTES,
   classifyAttachment,
+  matchJobPostBySubject,
   safeFilename,
   type InboundAttachment,
 } from "@/lib/inbound-email";
@@ -301,6 +302,30 @@ export const processInboundResume = inngest.createFunction(
     );
 
     // ---------------------------------------------------------------------
+    // 4b. Route to a job post by the title in the subject line.
+    //
+    // Memoized so a retry cannot route the same email to a different post if
+    // one is created or renamed mid-run. Every status is eligible, archived
+    // included; no match leaves the candidate in the inbox.
+    // ---------------------------------------------------------------------
+    const matchedJobPost = await step.run("match-job-post", async () => {
+      const jobPosts = await prisma.jobPost.findMany({
+        where: { orgId },
+        select: { id: true, title: true, status: true, createdAt: true },
+      });
+      const match = matchJobPostBySubject(data.subject, jobPosts);
+      return match ? { id: match.id, title: match.title } : null;
+    });
+
+    logger.info(
+      `[process-resume] MATCH ${
+        matchedJobPost
+          ? `jobPost=${matchedJobPost.id} ("${matchedJobPost.title}")`
+          : "none (inbox)"
+      }`,
+    );
+
+    // ---------------------------------------------------------------------
     // 5. One candidate per resume file.
     //
     // Agencies routinely forward a single email with several CVs attached. One
@@ -360,12 +385,10 @@ export const processInboundResume = inngest.createFunction(
           create: {
             id: candidateId,
             orgId,
-            // TODO(matching): `jobPostId` stays null. Which role a resume is
-            // for is genuinely unknown at this layer — the subject line may
-            // name it, the body may, or neither. Until that is designed, these
-            // land in /dashboard/inbox for manual assignment. See the summary
-            // for why this decision blocks the AI step's shape.
-            jobPostId: null,
+            // Set when the subject names a job post's title; null lands the
+            // candidate in /dashboard/inbox for manual assignment. Extraction
+            // hands an assigned candidate straight on to scoring.
+            jobPostId: matchedJobPost?.id ?? null,
             // Name and email come from the ENVELOPE, not the resume. Whoever
             // forwarded the mail is often the recruiter, not the candidate, so
             // treat these as provisional until extraction overwrites them.

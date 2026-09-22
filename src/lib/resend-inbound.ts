@@ -125,6 +125,35 @@ export async function fetchReceivedEmailBody(
 }
 
 /**
+ * Every address a received email was delivered or addressed to, lowercased.
+ *
+ * The webhook's `to` is the header, which on a Gmail auto-forward still names
+ * the forwarding mailbox rather than our alias. `received_for` is the envelope
+ * and does name the alias, so this is the fallback when the webhook's own
+ * addresses match no inbox.
+ */
+export async function fetchReceivedEmailRecipients(
+  emailId: string,
+): Promise<string[]> {
+  const body = asRecord(await getJson(`/emails/receiving/${emailId}`));
+  const addresses = [body.received_for, body.to, body.cc, body.bcc].flatMap(
+    (value) => (Array.isArray(value) ? value : []),
+  );
+
+  return [
+    ...new Set(
+      addresses
+        .map((value) => {
+          if (typeof value !== "string") return null;
+          const angled = /<([^>]+)>/.exec(value);
+          return (angled ? angled[1] : value).trim().toLowerCase() || null;
+        })
+        .filter((value): value is string => Boolean(value)),
+    ),
+  ];
+}
+
+/**
  * Attachment records, each carrying a freshly minted presigned `download_url`.
  *
  * MUST be called from inside the step that consumes the URL — see the note at

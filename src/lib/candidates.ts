@@ -32,12 +32,16 @@ export interface InboxCandidate {
 /**
  * The unassigned queue: everything ingested that no one has routed to a role
  * yet. This is the stopgap surface until automatic job matching exists.
+ *
+ * Unassigned is the only criterion, not status: extraction runs on ingest and
+ * moves a candidate out of NEW within seconds, so filtering on NEW hid every
+ * emailed resume from the one page where it could be routed.
  */
 export async function listInboxCandidates(
   orgId: string,
 ): Promise<InboxCandidate[]> {
   const rows = await prisma.candidate.findMany({
-    where: { orgId, jobPostId: null, status: "NEW" },
+    where: { orgId, jobPostId: null },
     orderBy: { ingestedAt: "desc" },
     take: 200,
     select: {
@@ -271,7 +275,7 @@ export async function listJobPostCandidates(
 
 export async function countInboxCandidates(orgId: string): Promise<number> {
   return prisma.candidate.count({
-    where: { orgId, jobPostId: null, status: "NEW" },
+    where: { orgId, jobPostId: null },
   });
 }
 

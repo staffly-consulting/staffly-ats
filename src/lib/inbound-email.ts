@@ -71,6 +71,14 @@ const inboundDataSchema = z.object({
   message_id: z.string().nullish(),
   from: addressListSchema.nullish(),
   to: addressListSchema.nullish(),
+  cc: addressListSchema.nullish(),
+  bcc: addressListSchema.nullish(),
+  /**
+   * Envelope recipients — where the message was actually delivered. Differs
+   * from `to` (the header) on an auto-forward: Gmail keeps `To: hr@company`
+   * and delivers to our alias, so only this field names the alias.
+   */
+  received_for: addressListSchema.nullish(),
   subject: z.string().nullish(),
   text: z.string().nullish(),
   html: z.string().nullish(),
@@ -183,7 +191,15 @@ export function normalizeInboundEmail(
   const data = "data" in payload ? payload.data : payload;
 
   const from = toAddressList(data.from)[0] ?? { email: null, name: null };
-  const recipients = toAddressList(data.to).map((entry) => entry.email);
+  // Envelope first: it is where the message was delivered, so it holds the
+  // alias even when the headers name only the forwarding mailbox.
+  const recipients = [
+    ...new Set(
+      [data.received_for, data.to, data.cc, data.bcc].flatMap((list) =>
+        toAddressList(list).map((entry) => entry.email),
+      ),
+    ),
+  ];
 
   const attachments: InboundAttachment[] = (data.attachments ?? []).map(
     (attachment, index) => ({
@@ -305,4 +321,66 @@ export function safeFilename(filename: string): string {
     .replace(/^\.+/, "")
     .slice(0, 120);
   return cleaned || "resume";
+}
+
+export interface JobPostTitleCandidate {
+  id: string;
+  title: string;
+  status: "DRAFT" | "OPEN" | "CLOSED" | "ARCHIVED";
+  createdAt: Date | string;
+}
+
+/** Lowercase, accents folded, every run of non-alphanumerics collapsed to a space. */
+function normalizeForMatch(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+const STATUS_PREFERENCE: Record<JobPostTitleCandidate["status"], number> = {
+  OPEN: 0,
+  DRAFT: 1,
+  CLOSED: 2,
+  ARCHIVED: 3,
+};
+
+/**
+ * Routes an emailed application to a job post by title in the subject line.
+ *
+ * A title matches when it appears in the subject as whole words, ignoring case
+ * and punctuation: "Fwd: Apply for Software Engineer!" matches "Software
+ * Engineer", "Software Engineering Lead" does not. Every status is eligible,
+ * archived included — an application naming a role is kept with that role
+ * rather than dropped into the unassigned inbox.
+ *
+ * When several titles match, the longest wins ("Senior Software Engineer" over
+ * "Software Engineer"). Posts sharing that title are ranked OPEN, DRAFT,
+ * CLOSED, ARCHIVED, then newest first. No match returns null, and the resume
+ * lands in the inbox for manual assignment as before.
+ */
+export function matchJobPostBySubject(
+  subject: string | null,
+  jobPosts: JobPostTitleCandidate[],
+): JobPostTitleCandidate | null {
+  if (!subject) return null;
+  const haystack = ` ${normalizeForMatch(subject)} `;
+
+  const matches = jobPosts
+    .map((post) => ({ post, title: normalizeForMatch(post.title) }))
+    .filter(({ title }) => title && haystack.includes(` ${title} `));
+
+  if (matches.length === 0) return null;
+
+  matches.sort(
+    (a, b) =>
+      b.title.length - a.title.length ||
+      STATUS_PREFERENCE[a.post.status] - STATUS_PREFERENCE[b.post.status] ||
+      new Date(b.post.createdAt).getTime() -
+        new Date(a.post.createdAt).getTime(),
+  );
+
+  return matches[0].post;
 }

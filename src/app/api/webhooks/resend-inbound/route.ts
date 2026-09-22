@@ -9,6 +9,7 @@ import {
   inboundEmailPayloadSchema,
   normalizeInboundEmail,
 } from "@/lib/inbound-email";
+import { fetchReceivedEmailRecipients } from "@/lib/resend-inbound";
 
 /**
  * Resend inbound email → `resume/received`.
@@ -125,7 +126,7 @@ export async function POST(request: Request) {
     }
   }
 
-  if (email.recipients.length === 0) {
+  if (email.recipients.length === 0 && !email.providerEmailId) {
     console.warn(
       `[resend-inbound] message ${email.messageId} has no recipients; ignoring`,
     );
@@ -139,6 +140,32 @@ export async function POST(request: Request) {
   for (const recipient of email.recipients) {
     inbox = await resolveInboxByAlias(recipient);
     if (inbox) break;
+  }
+
+  // An auto-forward keeps the original `To:` header, so the webhook may name
+  // only the forwarding mailbox. The envelope (`received_for`) names the alias;
+  // fetch it once rather than drop a forwarded application as unknown.
+  if (!inbox && email.providerEmailId) {
+    let envelope: string[];
+    try {
+      envelope = await fetchReceivedEmailRecipients(email.providerEmailId);
+    } catch (error) {
+      // Transient on Resend's side; the message may well be ours. Retry.
+      console.error(
+        `[resend-inbound] could not fetch envelope recipients for ${email.messageId}`,
+        error,
+      );
+      return NextResponse.json(
+        { error: "Could not resolve recipients" },
+        { status: 500 },
+      );
+    }
+
+    for (const recipient of envelope) {
+      if (email.recipients.includes(recipient)) continue;
+      inbox = await resolveInboxByAlias(recipient);
+      if (inbox) break;
+    }
   }
 
   if (!inbox) {
