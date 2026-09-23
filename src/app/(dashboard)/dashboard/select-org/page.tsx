@@ -29,7 +29,7 @@ export default function SelectOrgPage() {
     <div className="mx-auto max-w-xl space-y-6">
       <PageHeader
         title="Choose an organization"
-        description="Staffly keeps every job post and candidate scoped to an organization. Pick one to continue, or create a new one."
+        description="Staffly keeps every job post and candidate scoped to an organization. Pick one to continue. New organizations are created by Staffly, not here — ask your admin for an invitation if yours is missing."
       />
       <OrganizationList
         hidePersonal
