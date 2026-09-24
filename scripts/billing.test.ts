@@ -11,11 +11,13 @@ import {
   PLANS,
   PLAN_ORDER,
   SELF_SERVE_TIERS,
+  TRIAL_APPLICATION_CAP,
   TRIAL_PERIOD_DAYS,
   addOneMonth,
   annualSavingPercent,
   hasFeature,
   includedApplications,
+  ingestionAllowance,
   isOverageAt,
   isTrialing,
   needsFirstSubscription,
@@ -425,6 +427,76 @@ console.log("\n--- monthly anchor advance (no drift, month-length safe) ---");
   check(
     "one paid month grants 150 Shortlist applications, not 1,800",
     PLANS.SHORTLIST.includedApplications * monthsIn === 150,
+  );
+}
+
+console.log("\n--- ingestion allowance (every application is a model call) ---");
+{
+  const withUsage = (
+    tier: PlanTier,
+    status: string | null,
+    used: number,
+    requiresSubscription = true,
+  ) => ({
+    ...org(tier, status, requiresSubscription),
+    applicationsUsedInCycle: used,
+  });
+
+  const never = ingestionAllowance(withUsage("SHORTLIST", null, 0));
+  check(
+    "never-subscribed org cannot ingest",
+    !never.allowed && never.reason === "subscription-inactive",
+    never,
+  );
+
+  const canceled = ingestionAllowance(withUsage("PIPELINE", "canceled", 0));
+  check(
+    "canceled org cannot ingest",
+    !canceled.allowed && canceled.reason === "subscription-inactive",
+    canceled,
+  );
+
+  const legacy = ingestionAllowance(withUsage("PIPELINE", null, 5000, false));
+  check(
+    "legacy org (no subscription required) is uncapped",
+    legacy.allowed && legacy.remaining === null,
+    legacy,
+  );
+
+  const paying = ingestionAllowance(withUsage("SHORTLIST", "active", 10_000));
+  check(
+    "paying org past its pool is still uncapped (overage is billed)",
+    paying.allowed && paying.remaining === null,
+    paying,
+  );
+
+  check("trial cap is 50", TRIAL_APPLICATION_CAP === 50);
+
+  const sameOnEveryTier = SELF_SERVE_TIERS.every((tier) => {
+    const fresh = ingestionAllowance(withUsage(tier, "trialing", 0));
+    return fresh.allowed && fresh.remaining === 50;
+  });
+  check("fresh trial may ingest 50 on every tier", sameOnEveryTier);
+
+  const lastOne = ingestionAllowance(withUsage("TALENT_POOL", "trialing", 49));
+  check(
+    "trial with one application left may ingest exactly one",
+    lastOne.allowed && lastOne.remaining === 1,
+    lastOne,
+  );
+
+  const spent = ingestionAllowance(withUsage("TALENT_POOL", "trialing", 50));
+  check(
+    "trial that used its 50 is stopped, even on a large plan",
+    !spent.allowed && spent.reason === "trial-cap-reached",
+    spent,
+  );
+
+  const overshot = ingestionAllowance(withUsage("PIPELINE", "trialing", 55));
+  check(
+    "trial already past its pool (concurrent overshoot) stays stopped",
+    !overshot.allowed && overshot.reason === "trial-cap-reached",
+    overshot,
   );
 }
 

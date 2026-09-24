@@ -3,12 +3,14 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import {
   hasFeature,
+  ingestionAllowance,
   needsFirstSubscription,
   quotaSnapshot,
   requiredTierFor,
   subscriptionIsActive,
   type BillableOrg,
   type Feature,
+  type IngestionAllowance,
   type QuotaSnapshot,
 } from "@/lib/plans";
 import type { BillingInterval, PlanTier } from "@prisma/client";
@@ -98,6 +100,25 @@ export async function checkSubscription(
     active: false,
     reason: needsFirstSubscription(org) ? "never-subscribed" : "lapsed",
   };
+}
+
+/** Fetching variant of `ingestionAllowance`, for the ingestion pipeline. */
+export async function checkIngestionAllowance(
+  orgId: string,
+): Promise<IngestionAllowance> {
+  const org = await prisma.organization.findUnique({
+    where: { id: orgId },
+    select: {
+      planTier: true,
+      stripeSubscriptionStatus: true,
+      requiresSubscription: true,
+      applicationsUsedInCycle: true,
+    },
+  });
+
+  // A deleted org gets nothing, same as a lapsed one.
+  if (!org) return { allowed: false, reason: "subscription-inactive" };
+  return ingestionAllowance(org);
 }
 
 export class FeatureLockedError extends Error {

@@ -6,6 +6,7 @@ import {
   safeFilename,
   type InboundAttachment,
 } from "@/lib/inbound-email";
+import { checkIngestionAllowance } from "@/lib/entitlements";
 import { prisma } from "@/lib/prisma";
 import {
   fetchReceivedEmailBody,
@@ -216,6 +217,45 @@ export const processInboundResume = inngest.createFunction(
     }
 
     // ---------------------------------------------------------------------
+    // 1b. Is this org allowed to ingest at all?
+    //
+    // Checked before any download, storage or model work: every candidate
+    // created here becomes a Claude call, so an org without an active
+    // subscription — or a trial that has used its included pool — stops here.
+    // Memoized so a retry cannot flip the decision halfway through the email.
+    //
+    // Concurrent runs for the same org each read the count before the others
+    // increment it, so a trial can overshoot its cap by at most the
+    // `concurrency` limit's worth of emails. Bounded, and cheaper than a lock.
+    // ---------------------------------------------------------------------
+    const allowance = await step.run("check-ingestion-allowance", () =>
+      checkIngestionAllowance(orgId),
+    );
+
+    if (!allowance.allowed) {
+      logger.warn(
+        `[process-resume] org ${orgId} cannot ingest (${allowance.reason}); dropping ${triage.keep.length} resume(s) on ${messageId}`,
+      );
+      return {
+        candidatesCreated: 0,
+        skipped: triage.skipped.length,
+        reason: allowance.reason,
+      };
+    }
+
+    const accepted =
+      allowance.remaining === null
+        ? triage.keep
+        : triage.keep.slice(0, allowance.remaining);
+    const overCap = triage.keep.length - accepted.length;
+
+    if (overCap > 0) {
+      logger.warn(
+        `[process-resume] org ${orgId} trial cap reached mid-email; dropping ${overCap} resume(s) on ${messageId}`,
+      );
+    }
+
+    // ---------------------------------------------------------------------
     // 2. Fetch the body Resend did not send.
     //
     // `email.received` has no `text`/`html`, so without this the archive would
@@ -298,7 +338,7 @@ export const processInboundResume = inngest.createFunction(
     // same ids instead of orphaning files under ids nothing references.
     // ---------------------------------------------------------------------
     const candidateIds = await step.run("allocate-candidate-ids", () =>
-      triage.keep.map(() => crypto.randomUUID()),
+      accepted.map(() => crypto.randomUUID()),
     );
 
     // ---------------------------------------------------------------------
@@ -341,7 +381,7 @@ export const processInboundResume = inngest.createFunction(
       usage: Awaited<ReturnType<typeof recordApplicationUsage>>;
     }[] = [];
 
-    for (const [position, target] of triage.keep.entries()) {
+    for (const [position, target] of accepted.entries()) {
       const candidateId = candidateIds[position];
       const attachment = data.attachments[target.index];
       const filename = safeFilename(target.filename);
@@ -456,7 +496,9 @@ export const processInboundResume = inngest.createFunction(
     logger.info(
       `[process-resume] DONE org=${orgId} messageId=${messageId} created=${results.length} skippedAtTriage=${
         triage.skipped.length
-      } failedToDownload=${triage.keep.length - results.length} bodySource=${
+      } overTrialCap=${overCap} failedToDownload=${
+        accepted.length - results.length
+      } bodySource=${
         body.text ? "present" : "empty"
       } rawEmailKey=${rawEmailKey}`,
     );
@@ -464,6 +506,7 @@ export const processInboundResume = inngest.createFunction(
     return {
       candidatesCreated: results.length,
       skipped: triage.skipped.length,
+      overTrialCap: overCap,
       rawEmailKey,
     };
   },

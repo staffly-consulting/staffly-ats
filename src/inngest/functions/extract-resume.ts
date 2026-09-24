@@ -1,4 +1,5 @@
 import { inngest, type StafflyEvents } from "@/inngest/client";
+import { checkSubscription } from "@/lib/entitlements";
 import { extractResume, type ResumeSource } from "@/lib/extraction";
 import { prisma } from "@/lib/prisma";
 import { extractResumeText, supportsVisionFallback } from "@/lib/resume-text";
@@ -43,6 +44,24 @@ export const extractResumeFunction = inngest.createFunction(
   },
   async ({ event, step, logger }) => {
     const { orgId, candidateId } = event.data as CandidateCreated;
+
+    // -------------------------------------------------------------------
+    // 0. No active subscription, no model call.
+    //
+    // Ingestion already checks this, but extraction is also reachable from
+    // the retry action, and a subscription can lapse between the two. Checked
+    // before the claim so the candidate keeps its status and can be retried
+    // once the org reactivates.
+    // -------------------------------------------------------------------
+    const subscription = await step.run("check-subscription", () =>
+      checkSubscription(orgId),
+    );
+    if (!subscription.active) {
+      logger.warn(
+        `[extract-resume] org ${orgId} has no active subscription (${subscription.reason}); not extracting ${candidateId}`,
+      );
+      return { skipped: "subscription-inactive" };
+    }
 
     // -------------------------------------------------------------------
     // 1. Claim the candidate.

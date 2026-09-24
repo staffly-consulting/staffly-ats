@@ -8,7 +8,9 @@ import {
   disconnectEmailInbox,
   type EmailInboxSummary,
 } from "@/lib/email-inbox";
+import { checkSubscription } from "@/lib/entitlements";
 import { PERMISSIONS } from "@/lib/permissions";
+import { TRIAL_PERIOD_DAYS } from "@/lib/plans";
 import { prisma } from "@/lib/prisma";
 
 export type InboxActionResult =
@@ -26,6 +28,20 @@ export async function connectInboxAction(): Promise<InboxActionResult> {
 
   const denied = await permissionError(context, PERMISSIONS.INBOX_MANAGE);
   if (denied) return denied;
+
+  // Every resume that reaches this address costs a model call, so the address
+  // is part of the paid product. Ingestion re-checks this per email; refusing
+  // here just stops an org holding an address that cannot do anything.
+  const subscription = await checkSubscription(orgId);
+  if (!subscription.active) {
+    return {
+      ok: false,
+      error:
+        subscription.reason === "lapsed"
+          ? "Your subscription is no longer active. Reactivate it in Settings to receive applications again."
+          : `Choose a plan to get a forwarding address. Your first ${TRIAL_PERIOD_DAYS} days are free and you can cancel within them without being charged.`,
+    };
+  }
 
   const organization = await prisma.organization.findUnique({
     where: { id: orgId },

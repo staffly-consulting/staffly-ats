@@ -1,5 +1,6 @@
 import { inngest, type StafflyEvents } from "@/inngest/client";
 import { readMandatoryCriteria, readOptionalCriteria } from "@/lib/criteria";
+import { checkSubscription } from "@/lib/entitlements";
 import { prisma } from "@/lib/prisma";
 import { computeScore } from "@/lib/scoring";
 import { judgeCandidate } from "@/lib/scoring-ai";
@@ -41,6 +42,23 @@ export const scoreCandidateFunction = inngest.createFunction(
   },
   async ({ event, step, logger }) => {
     const { orgId, candidateId, force } = event.data as ReadyForScoring;
+
+    // -------------------------------------------------------------------
+    // 0. No active subscription, no model call.
+    //
+    // Job posts outlive a lapsed subscription, so without this an org that
+    // cancelled could keep scoring through assign and re-score indefinitely.
+    // Nothing is written, so the candidate scores normally after reactivation.
+    // -------------------------------------------------------------------
+    const subscription = await step.run("check-subscription", () =>
+      checkSubscription(orgId),
+    );
+    if (!subscription.active) {
+      logger.warn(
+        `[score-candidate] org ${orgId} has no active subscription (${subscription.reason}); not scoring ${candidateId}`,
+      );
+      return { skipped: "subscription-inactive" };
+    }
 
     // -------------------------------------------------------------------
     // 1. Gather everything, org-scoped, and decide whether to proceed.

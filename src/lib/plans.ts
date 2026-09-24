@@ -97,6 +97,16 @@ export const PLANS: Record<PlanTier, PlanDefinition> = {
  */
 export const TRIAL_PERIOD_DAYS = 14;
 
+/**
+ * Applications a trial may ingest in total, on every tier.
+ *
+ * Trial overage is waived, so without a cap a trial is unlimited model calls
+ * that can be cancelled before the first charge. Flat rather than the plan's
+ * pool: the tier a trialist picked says nothing about what they will pay, and
+ * 50 is enough to see screening work on a real job post.
+ */
+export const TRIAL_APPLICATION_CAP = 50;
+
 /** Ascending. Index is the comparison key for "this tier and above". */
 export const PLAN_ORDER: PlanTier[] = [
   "SHORTLIST",
@@ -294,6 +304,35 @@ export function isOverageAt(
   countAfterIncrement: number,
 ): boolean {
   return countAfterIncrement > includedApplications(tier);
+}
+
+export type IngestionAllowance =
+  /** `remaining` is null when uncapped — JSON-safe, unlike Infinity. */
+  | { allowed: true; remaining: number | null }
+  | { allowed: false; reason: "subscription-inactive" | "trial-cap-reached" };
+
+/**
+ * How many more applications this org may ingest right now.
+ *
+ * Every ingested application costs a Claude call, so this is the gate that
+ * stops an org with no paying subscription from spending our Anthropic budget.
+ *
+ * A trial is capped at `TRIAL_APPLICATION_CAP`. Paying orgs stay uncapped:
+ * past the pool they are billed overage, which is the point.
+ */
+export function ingestionAllowance(
+  org: BillableOrg & { applicationsUsedInCycle: number },
+): IngestionAllowance {
+  if (!subscriptionIsActive(org)) {
+    return { allowed: false, reason: "subscription-inactive" };
+  }
+  if (!isTrialing(org)) return { allowed: true, remaining: null };
+
+  const remaining =
+    TRIAL_APPLICATION_CAP - Math.max(0, org.applicationsUsedInCycle);
+  return remaining > 0
+    ? { allowed: true, remaining }
+    : { allowed: false, reason: "trial-cap-reached" };
 }
 
 /* -------------------------------------------------------------------------- */
