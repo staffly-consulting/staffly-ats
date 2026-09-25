@@ -1,10 +1,11 @@
 import { headers } from "next/headers";
 
-import type {
-  OrganizationJSON,
-  OrganizationMembershipJSON,
-  UserJSON,
-  WebhookEvent,
+import {
+  clerkClient,
+  type OrganizationJSON,
+  type OrganizationMembershipJSON,
+  type UserJSON,
+  type WebhookEvent,
 } from "@clerk/nextjs/server";
 import { Webhook } from "svix";
 
@@ -212,6 +213,17 @@ async function handleEvent(event: WebhookEvent): Promise<void> {
       const data = event.data;
       const orgId = data.organization_id;
       const clerkUserId = data.user_id;
+
+      // Anyone who joined by invitation belongs to a customer's organization
+      // and must not spin up their own. Enforced by Clerk per user, so the
+      // global "Allow user-created organizations" setting can stay on for
+      // self-serve sign-ups. Before the role early-return below: a legacy
+      // invitation without role metadata is still an invitation. Idempotent,
+      // and a failure 500s so Clerk retries.
+      const client = await clerkClient();
+      await client.users.updateUser(clerkUserId, {
+        createOrganizationEnabled: false,
+      });
 
       // The whole point of this handler. Clerk's free tier has two org roles
       // and Staffly has three, so the role an admin actually chose travels in
