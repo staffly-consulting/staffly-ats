@@ -3,8 +3,10 @@ import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 
 import { OrganizationList } from "@clerk/nextjs";
+import { auth } from "@clerk/nextjs/server";
 
 import { PageHeader } from "@/components/dashboard/page-header";
+import { blockOrgCreationIfInvited } from "@/lib/org";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("meta");
@@ -24,7 +26,11 @@ export const dynamic = "force-dynamic";
  * This page must never call `requireOrgContext()` itself — that would redirect
  * to itself forever.
  */
-export default function SelectOrgPage() {
+export default async function SelectOrgPage() {
+  // Before render, so Clerk's list loads the user with creation already off.
+  const { userId } = await auth();
+  if (userId) await blockOrgCreationIfInvited(userId);
+
   return (
     <div className="mx-auto max-w-xl space-y-6">
       <PageHeader

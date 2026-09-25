@@ -366,6 +366,48 @@ export async function removeMember(params: {
   }
 }
 
+/**
+ * Invited users may never create organizations of their own.
+ *
+ * The `organizationInvitation.accepted` webhook sets this at join time, but a
+ * webhook only covers users invited after it was deployed, and only if it is
+ * delivered. This is the backstop, run where "Create organization" is shown:
+ * membership of any organization the user did not create means they were
+ * invited. Clerk enforces the flag server-side and its UI hides the button.
+ *
+ * Best-effort: a Clerk outage must not lock anyone out of picking their org.
+ */
+export async function blockOrgCreationIfInvited(
+  clerkUserId: string,
+): Promise<void> {
+  try {
+    const client = await clerkClient();
+    const user = await client.users.getUser(clerkUserId);
+    if (!user.createOrganizationEnabled) return;
+
+    const memberships = await client.users.getOrganizationMembershipList({
+      userId: clerkUserId,
+      limit: 100,
+    });
+    const invited = memberships.data.some(
+      (membership) => membership.organization.createdBy !== clerkUserId,
+    );
+    if (!invited) return;
+
+    await client.users.updateUser(clerkUserId, {
+      createOrganizationEnabled: false,
+    });
+    console.info(
+      `[org] ${clerkUserId} joined by invitation; organization creation disabled`,
+    );
+  } catch (cause) {
+    console.error(
+      `[org] could not check organization creation for ${clerkUserId}`,
+      cause,
+    );
+  }
+}
+
 export interface OrgSettings {
   id: string;
   name: string;
