@@ -3,6 +3,7 @@ import "server-only";
 import writeXlsxFile, { type SheetData } from "write-excel-file/node";
 
 import type { JobPostCandidate } from "@/lib/candidates";
+import { DECISION_LABELS, isDecisionStatus } from "@/lib/hiring-stage";
 import type { JobPostSummary } from "@/lib/job-posts";
 import { SCORE_THRESHOLDS } from "@/lib/score";
 import type { Criterion } from "@/lib/types";
@@ -156,11 +157,7 @@ const COLUMNS: ColumnSpec[] = [
     // two differ. "—" is a candidate nobody has ruled on yet, which is
     // different from one that was considered and passed over.
     value: (c) =>
-      c.status === "SHORTLISTED"
-        ? "Shortlisted"
-        : c.status === "REJECTED"
-          ? "Rejected"
-          : "—",
+      isDecisionStatus(c.status) ? DECISION_LABELS[c.status] : "—",
     type: String,
   },
   {

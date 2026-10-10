@@ -16,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { DECISION_LABELS, DECISION_STATUSES } from "@/lib/hiring-stage";
 import { SCORE_FILTER_OPTIONS } from "@/lib/score";
 import { cn, pluralize } from "@/lib/utils";
 
@@ -144,8 +145,11 @@ export function CandidateFilterBar({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value={ANY}>Any decision</SelectItem>
-              <SelectItem value="SHORTLISTED">Shortlisted</SelectItem>
-              <SelectItem value="REJECTED">Rejected</SelectItem>
+              {DECISION_STATUSES.map((status) => (
+                <SelectItem key={status} value={status}>
+                  {DECISION_LABELS[status]}
+                </SelectItem>
+              ))}
               <SelectItem value="undecided">Not yet decided</SelectItem>
             </SelectContent>
           </Select>

@@ -7,6 +7,7 @@ import {
   type CandidateQueryFilters,
 } from "@/lib/candidates";
 import { buildCandidateWorkbook, exportFilename } from "@/lib/candidate-export";
+import { DECISION_LABELS, parseDecisionFilter } from "@/lib/hiring-stage";
 import { getJobPost } from "@/lib/job-posts";
 import { PERMISSIONS } from "@/lib/permissions";
 
@@ -50,12 +51,7 @@ function readFilters(params: URLSearchParams): CandidateQueryFilters {
     unreadOnly: params.get("unread") === "1",
     university: one("university"),
     nationality: one("nationality"),
-    decision:
-      params.get("decision") === "SHORTLISTED" ||
-      params.get("decision") === "REJECTED" ||
-      params.get("decision") === "undecided"
-        ? (params.get("decision") as "SHORTLISTED" | "REJECTED" | "undecided")
-        : undefined,
+    decision: parseDecisionFilter(params.get("decision")),
   };
 }
 
@@ -71,7 +67,7 @@ function describeFilters(filters: CandidateQueryFilters): string | null {
     parts.push(
       filters.decision === "undecided"
         ? "not yet decided"
-        : `marked ${filters.decision.toLowerCase()}`,
+        : `stage: ${DECISION_LABELS[filters.decision].toLowerCase()}`,
     );
   }
   if (filters.university) parts.push(`university: ${filters.university}`);

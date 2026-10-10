@@ -60,6 +60,7 @@ model Organization {
   jobPosts        JobPost[]
   emailInboxes    EmailInbox[]
   candidates      Candidate[]
+  candidateNotes  CandidateNote[]
   universityLists UniversityPreference[]
   usageLedger     UsageLedgerEntry[]
 
@@ -84,15 +85,15 @@ enum BillingInterval {
 /// invoice can be reconciled line by line against what was actually ingested.
 /// Billing logic reads `Organization.applicationsUsedInCycle`, never this table.
 model UsageLedgerEntry {
-  id                 String   @id @default(cuid())
-  organizationId     String
-  candidateId        String?
-  wasOverage         Boolean
+  id                  String   @id @default(cuid())
+  organizationId      String
+  candidateId         String?
+  wasOverage          Boolean
   /// Set once Stripe confirms the meter event. Null on a non-overage entry, or
   /// on an overage whose report has not yet succeeded — the gap between
   /// `wasOverage: true` and a null id is unreported revenue, EXCEPT where
   /// `billingWaivedReason` is set. Reconciliation must exclude those.
-  stripeMeterEventId String?
+  stripeMeterEventId  String?
   /// Why an overage application was deliberately not billed. Null means it was
   /// billed, or is still waiting to be. Today the only value is "TRIAL":
   /// applications ingested during a free trial count against the pool and show
@@ -100,7 +101,7 @@ model UsageLedgerEntry {
   /// careers inbox is charged hundreds of dollars in overage on the first
   /// invoice, for a plan they had not decided to keep.
   billingWaivedReason String?
-  createdAt          DateTime @default(now())
+  createdAt           DateTime @default(now())
 
   // Cascade, unlike the spec's bare relation: Prisma defaults a required
   // relation to onDelete: Restrict, which would make `organization.delete()`
@@ -216,17 +217,17 @@ model EmailInbox {
 }
 
 model Candidate {
-  id             String          @id @default(uuid())
-  orgId          String
-  jobPostId      String?
-  email          String?
-  name           String?
-  phone          String?
-  nationality    String?
-  extractedData  Json?
-  resumeFileUrl  String
-  rawEmailSource String?
-  status         CandidateStatus @default(NEW)
+  id              String          @id @default(uuid())
+  orgId           String
+  jobPostId       String?
+  email           String?
+  name            String?
+  phone           String?
+  nationality     String?
+  extractedData   Json?
+  resumeFileUrl   String
+  rawEmailSource  String?
+  status          CandidateStatus @default(NEW)
   /// Set when a deterministic scan found text in the resume that a human
   /// cannot see — white-on-white, a sub-4pt font, or PDF render mode 3.
   ///
@@ -236,7 +237,7 @@ model Candidate {
   /// model, so this column does not gate anything — it exists so the attempt
   /// reaches the recruiter as a flag rather than being silently cleaned up.
   /// Deliberately never a rejection: see `evaluateFlags`.
-  hiddenTextFound Boolean        @default(false)
+  hiddenTextFound Boolean         @default(false)
   /// Human-readable description of what was found. Null when nothing was.
   hiddenTextNote  String?
   /// When someone first opened this candidate, or null if nobody has.
@@ -261,13 +262,14 @@ model Candidate {
   /// is the product failing, not the customer consuming something, and putting
   /// a price on fixing our own extraction failure is the wrong incentive.
   rescoreCount    Int             @default(0)
-  ingestedAt     DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
+  ingestedAt      DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
 
   organization Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
   jobPost      JobPost?         @relation(fields: [jobPostId], references: [id])
   scores       CandidateScore[]
   referral     Referral?
+  notes        CandidateNote[]
 
   @@index([orgId, jobPostId])
   @@index([orgId, status])
@@ -281,6 +283,11 @@ enum CandidateStatus {
   EXTRACTED
   SCORED
   SHORTLISTED
+  // The hiring pipeline past the shortlist. Like SHORTLISTED and REJECTED these
+  // are only ever written by a person — see `src/lib/hiring-stage.ts`.
+  INTERVIEW
+  OFFER
+  HIRED
   REJECTED
   ERROR
 }
@@ -295,6 +302,28 @@ model Referral {
   candidate Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
 
   @@map("referrals")
+}
+
+/// A team member's note on a candidate — interview feedback, a reason for a
+/// decision, anything the next person to open the candidate should know.
+///
+/// `orgId` is denormalized from the candidate so every query and the RLS policy
+/// can scope on it directly, the same as `candidates` itself.
+model CandidateNote {
+  id          String   @id @default(uuid())
+  orgId       String
+  candidateId String
+  /// Clerk user id of the author. Deliberately not a relation to `OrgMember`:
+  /// removing someone from the org must not delete what they wrote.
+  authorId    String
+  body        String
+  createdAt   DateTime @default(now())
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  candidate    Candidate    @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@index([candidateId, createdAt])
+  @@map("candidate_notes")
 }
 
 model CandidateScore {

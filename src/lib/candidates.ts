@@ -4,6 +4,7 @@ import type { CandidateStatus } from "@prisma/client";
 
 import type { Prisma } from "@prisma/client";
 
+import { DECISION_STATUSES, type DecisionFilter } from "@/lib/hiring-stage";
 import { prisma } from "@/lib/prisma";
 import {
   parseExtractedData,
@@ -124,7 +125,7 @@ export interface CandidateQueryFilters {
    * The human decision, not the score. "undecided" means a candidate nobody
    * has ruled on yet — the queue a recruiter actually works through.
    */
-  decision?: "SHORTLISTED" | "REJECTED" | "undecided";
+  decision?: DecisionFilter;
   /** Only candidates nobody has opened yet. */
   unreadOnly?: boolean;
 }
@@ -159,7 +160,7 @@ function buildWhere(
     // Everything a person has not ruled on. Deliberately includes ERROR and
     // in-flight candidates: they are unresolved work too, and hiding them here
     // would make the queue look complete when it is not.
-    where.status = { notIn: ["SHORTLISTED", "REJECTED"] };
+    where.status = { notIn: [...DECISION_STATUSES] };
   } else if (filters.decision) {
     where.status = filters.decision;
   }

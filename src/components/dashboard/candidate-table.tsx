@@ -7,6 +7,7 @@ import { FileText, Flag, Inbox, Mail } from "lucide-react";
 import { toast } from "sonner";
 
 import { getResumeUrlAction } from "@/app/(dashboard)/dashboard/candidate-actions";
+import type { JobPostStatus } from "@prisma/client";
 import { CandidateDetailSheet } from "@/components/dashboard/candidate-detail-sheet";
 import { setCandidateReadAction } from "@/app/(dashboard)/dashboard/candidate-actions";
 import { CandidateFilterBar } from "@/components/dashboard/candidate-filters";
@@ -64,6 +65,7 @@ export function CandidateTable({
   nationalities,
   totalCount,
   canDecide,
+  jobPost,
 }: {
   candidates: JobPostCandidate[];
   universities: string[];
@@ -76,6 +78,8 @@ export function CandidateTable({
    * makes inviting the whole hiring panel safe.
    */
   canDecide: boolean;
+  /** The post being viewed; the sheet offers to close it after a hire. */
+  jobPost: { id: string; status: JobPostStatus };
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -369,6 +373,7 @@ export function CandidateTable({
 
       <CandidateDetailSheet
         canDecide={canDecide}
+        jobPost={jobPost}
         candidate={selected}
         open={selected !== null}
         onOpenChange={(open) => {

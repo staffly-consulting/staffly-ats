@@ -1,6 +1,7 @@
 import { inngest, type StafflyEvents } from "@/inngest/client";
 import { readMandatoryCriteria, readOptionalCriteria } from "@/lib/criteria";
 import { checkSubscription } from "@/lib/entitlements";
+import { isDecisionStatus } from "@/lib/hiring-stage";
 import { prisma } from "@/lib/prisma";
 import { computeScore } from "@/lib/scoring";
 import { judgeCandidate } from "@/lib/scoring-ai";
@@ -41,7 +42,8 @@ export const scoreCandidateFunction = inngest.createFunction(
     triggers: [{ event: "candidate/ready-for-scoring" }],
   },
   async ({ event, step, logger }) => {
-    const { orgId, candidateId, force } = event.data as ReadyForScoring;
+    const { orgId, candidateId, force, restoreStatus } =
+      event.data as ReadyForScoring;
 
     // -------------------------------------------------------------------
     // 0. No active subscription, no model call.
@@ -249,9 +251,15 @@ export const scoreCandidateFunction = inngest.createFunction(
         },
       });
 
+      // A re-score of someone already shortlisted, at interview and so on puts
+      // them back where a person left them. Validated rather than trusted: the
+      // value arrives in an event payload, and only a decision status may be
+      // written from one.
       await prisma.candidate.updateMany({
         where: { id: candidateId, orgId },
-        data: { status: "SCORED" },
+        data: {
+          status: isDecisionStatus(restoreStatus) ? restoreStatus : "SCORED",
+        },
       });
     });
 

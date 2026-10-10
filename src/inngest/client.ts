@@ -1,5 +1,6 @@
 import { Inngest } from "inngest";
 
+import type { DecisionStatus } from "@/lib/hiring-stage";
 import type { InboundAttachment } from "@/lib/inbound-email";
 
 /**
@@ -73,6 +74,11 @@ export interface StafflyEvents {
     candidateId: string;
     /** Set by the Re-score action; overwrites an existing CandidateScore. */
     force?: boolean;
+    /**
+     * The hiring decision the candidate held when a re-score was requested.
+     * Written back in place of SCORED so re-scoring never undoes a decision.
+     */
+    restoreStatus?: DecisionStatus;
   };
 }
 

@@ -29,6 +29,9 @@ insert into candidate_scores (id, "candidateId", "jobPostId", "overallScore", br
   ('s_A', 'c_A', 'j_A', 80, '[]'::jsonb, 'a'),
   ('s_B', 'c_B', 'j_B', 70, '[]'::jsonb, 'b');
 
+insert into candidate_notes (id, "orgId", "candidateId", "authorId", body) values
+  ('n_A', 'org_A', 'c_A', 'user_A', 'a'), ('n_B', 'org_B', 'c_B', 'user_B', 'b');
+
 \echo '===== TEST 0: authenticated holds no grants -> denied before RLS ====='
 -- Must run BEFORE the re-grant below. This is the production posture as of the
 -- rls_hardening migration: the PostgREST-facing roles reach nothing in `public`,
@@ -58,7 +61,8 @@ grant select, insert, update, delete on
   public.email_inboxes,
   public.candidates,
   public.referrals,
-  public.candidate_scores
+  public.candidate_scores,
+  public.candidate_notes
 to authenticated;
 
 \echo '===== TEST 1: caller in org_A (Clerk v2 token, o.id) ====='
@@ -74,6 +78,7 @@ union all select 'email_inboxes', count(*) from email_inboxes
 union all select 'candidates', count(*) from candidates
 union all select 'referrals', count(*) from referrals
 union all select 'candidate_scores', count(*) from candidate_scores
+union all select 'candidate_notes', count(*) from candidate_notes
 order by 1;
 select 'leaked_rows' as check, count(*) from job_posts where "orgId" <> 'org_A';
 rollback;
@@ -93,6 +98,7 @@ select coalesce(public.staffly_org_id(), '<null>') as resolved_org;
 select 'job_posts' t, count(*) from job_posts
 union all select 'candidates', count(*) from candidates
 union all select 'candidate_scores', count(*) from candidate_scores
+union all select 'candidate_notes', count(*) from candidate_notes
 union all select 'referrals', count(*) from referrals;
 rollback;
 

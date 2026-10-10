@@ -22,6 +22,7 @@ import { JobStatusPill } from "@/components/dashboard/status-pill";
 import { Button } from "@/components/ui/button";
 import { checkPermission, requireOrgContext } from "@/lib/auth";
 import { PERMISSIONS } from "@/lib/permissions";
+import { parseDecisionFilter } from "@/lib/hiring-stage";
 import { getJobPost } from "@/lib/job-posts";
 import {
   getCandidateFacets,
@@ -53,12 +54,7 @@ function readFilters(
     referralOnly: one("referral") === "1",
     flaggedOnly: one("flagged") === "1",
     unreadOnly: one("unread") === "1",
-    decision:
-      one("decision") === "SHORTLISTED" ||
-      one("decision") === "REJECTED" ||
-      one("decision") === "undecided"
-        ? (one("decision") as "SHORTLISTED" | "REJECTED" | "undecided")
-        : undefined,
+    decision: parseDecisionFilter(one("decision")),
     university: one("university") || undefined,
     nationality: one("nationality") || undefined,
   };
@@ -260,6 +256,7 @@ export default async function JobCandidatesPage({
         </div>
         <CandidateTable
           canDecide={canWrite}
+          jobPost={{ id: job.id, status: job.status }}
           candidates={candidates}
           universities={facets.universities}
           nationalities={facets.nationalities}

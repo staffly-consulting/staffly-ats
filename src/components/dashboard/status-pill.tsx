@@ -35,7 +35,8 @@ const JOB_STATUS: Record<JobStatus, { className: string }> = {
 /**
  * Real `CandidateStatus` from the database. The pipeline writes NEW (ingested)
  * → PROCESSING (extraction running) → EXTRACTED (resume read) or ERROR.
- * SCORED and SHORTLISTED arrive with the scoring step.
+ * SCORED arrives with the scoring step; SHORTLISTED through HIRED, and
+ * REJECTED, are set by a person.
  */
 const CANDIDATE_STATUS: Record<CandidateStatus, { className: string }> = {
   NEW: {
@@ -52,6 +53,15 @@ const CANDIDATE_STATUS: Record<CandidateStatus, { className: string }> = {
   },
   SHORTLISTED: {
     className: "bg-success/12 text-success border-success/25",
+  },
+  INTERVIEW: {
+    className: "bg-sky-500/12 text-sky-600 border-sky-500/25",
+  },
+  OFFER: {
+    className: "bg-violet-500/12 text-violet-600 border-violet-500/25",
+  },
+  HIRED: {
+    className: "bg-success text-success-foreground border-success",
   },
   REJECTED: {
     className: "bg-muted text-muted-foreground border-border",

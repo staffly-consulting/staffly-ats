@@ -41,6 +41,9 @@
     "EXTRACTED": "Extracted",
     "SCORED": "Scored",
     "SHORTLISTED": "Shortlisted",
+    "INTERVIEW": "Interview",
+    "OFFER": "Offer",
+    "HIRED": "Hired",
     "REJECTED": "Rejected",
     "ERROR": "Error"
   },
@@ -241,5 +244,14 @@
       "done": "Job post restored",
       "failed": "Could not restore this job post"
     }
+  },
+  "hiredClosePrompt": {
+    "title": "Close this position?",
+    "description": "You marked a candidate as hired. If the role is now filled, close the job post so no new candidates can be assigned to it. Everyone keeps access to its candidates and scores, and you can reopen it at any time. If you are still hiring for this role, keep it open.",
+    "keepOpen": "Keep open",
+    "confirm": "Close job post",
+    "working": "Closing…",
+    "done": "Job post closed",
+    "failed": "Could not close this job post"
   }
 }

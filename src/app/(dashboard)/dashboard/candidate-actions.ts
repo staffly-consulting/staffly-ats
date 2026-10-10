@@ -8,6 +8,11 @@ import {
   assignCandidateToJobPost,
   getCandidateResumeKey,
 } from "@/lib/candidates";
+import {
+  DECISION_STATUSES,
+  isDecisionStatus,
+  type DecisionStatus,
+} from "@/lib/hiring-stage";
 import { PERMISSIONS } from "@/lib/permissions";
 import type { CandidateStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -207,7 +212,18 @@ export async function rescoreCandidateAction(
       name: "candidate/ready-for-scoring",
       // `force` is what lets this overwrite; without it the function treats an
       // existing score as "already done" and exits.
-      data: { orgId, candidateId, force: true },
+      //
+      // `restoreStatus` carries the human decision across the run. The claim
+      // above has already overwritten it with PROCESSING, and without this a
+      // re-score would send someone at interview back to SCORED.
+      data: {
+        orgId,
+        candidateId,
+        force: true,
+        ...(isDecisionStatus(candidate.status)
+          ? { restoreStatus: candidate.status }
+          : {}),
+      },
     });
 
     revalidatePath("/dashboard/inbox");
@@ -307,18 +323,13 @@ export async function assignCandidateAction(
 const DECIDABLE: CandidateStatus[] = [
   "EXTRACTED",
   "SCORED",
-  "SHORTLISTED",
-  "REJECTED",
+  ...DECISION_STATUSES,
 ];
 
-export type CandidateDecision = "SHORTLISTED" | "REJECTED" | "UNDECIDED";
+export type CandidateDecision = DecisionStatus | "UNDECIDED";
 
 function parseDecision(value: unknown): CandidateDecision | null {
-  return value === "SHORTLISTED" ||
-    value === "REJECTED" ||
-    value === "UNDECIDED"
-    ? value
-    : null;
+  return value === "UNDECIDED" || isDecisionStatus(value) ? value : null;
 }
 
 /**
@@ -326,10 +337,15 @@ function parseDecision(value: unknown): CandidateDecision | null {
  *
  * This is the counterpart to the score, and the distinction is the point: the
  * model produces a SUGGESTION (a number, from evidence) and a human makes the
- * DECISION (this status). Nothing in the scoring pipeline ever writes
- * SHORTLISTED or REJECTED — if it did, "shortlisted" would stop meaning
- * "somebody chose this person" and the recruiter would have no way to record
- * disagreeing with the score.
+ * DECISION (this status). Nothing in the scoring pipeline ever chooses a
+ * decision status — if it did, "shortlisted" would stop meaning "somebody chose
+ * this person" and the recruiter would have no way to record disagreeing with
+ * the score. (A re-score puts back the one a person already chose; that is
+ * restoring a decision, not making one.)
+ *
+ * Any stage can be set from any other. Hiring is not a strict sequence — an
+ * offer is withdrawn, a rejected candidate is reconsidered — and a rule that
+ * refused those would only send the recruiter back to a spreadsheet.
  *
  * Requires CANDIDATE_WRITE, so a VIEWER can read a shortlist but not change
  * it. That is the whole reason unlimited viewer seats are safe.

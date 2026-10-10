@@ -1,6 +1,6 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 
 import {
   AlertTriangle,
@@ -23,6 +23,7 @@ import {
   UserPlus,
   Star,
   ThumbsDown,
+  Workflow,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -30,7 +31,11 @@ import {
   rescoreCandidateAction,
   setCandidateDecisionAction,
   retryExtractionAction,
+  type CandidateDecision,
 } from "@/app/(dashboard)/dashboard/candidate-actions";
+import { CandidateNotes } from "@/components/dashboard/candidate-notes";
+import { CandidateStageSelect } from "@/components/dashboard/candidate-stage-select";
+import { ClosePositionDialog } from "@/components/dashboard/close-position-dialog";
 import { CandidateStatusPill } from "@/components/dashboard/status-pill";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -44,6 +49,8 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import type { JobPostCandidate } from "@/lib/candidates";
+import type { JobPostStatus } from "@prisma/client";
+import { DECISION_LABELS } from "@/lib/hiring-stage";
 import type { ExtractedResumeData } from "@/lib/validations/resume";
 import {
   SCORE_BAND_BADGE_CLASSES,
@@ -460,6 +467,7 @@ export function CandidateDetailSheet({
   onOpenResume,
   resumePending,
   canDecide,
+  jobPost,
 }: {
   candidate: JobPostCandidate | null;
   open: boolean;
@@ -468,10 +476,13 @@ export function CandidateDetailSheet({
   resumePending: boolean;
   /** False for VIEWER — see `CandidateTable`. */
   canDecide: boolean;
+  /** The post these candidates belong to, for the "position filled?" prompt. */
+  jobPost: { id: string; status: JobPostStatus };
 }) {
   const [retrying, startRetry] = useTransition();
   const [rescoring, startRescore] = useTransition();
   const [deciding, startDecide] = useTransition();
+  const [askClosePosition, setAskClosePosition] = useState(false);
 
   // Raw transition flags are too brief to see — see `useVisiblePending`.
   const showDeciding = useVisiblePending(deciding);
@@ -487,8 +498,11 @@ export function CandidateDetailSheet({
    * two-state toggle is more UI than the decision deserves.
    */
   function decide(candidateId: string, next: "SHORTLISTED" | "REJECTED") {
-    const target = candidate?.status === next ? "UNDECIDED" : next;
+    setStage(candidateId, candidate?.status === next ? "UNDECIDED" : next);
+  }
 
+  /** Moves the candidate to any stage — the footer buttons and the picker. */
+  function setStage(candidateId: string, target: CandidateDecision) {
     startDecide(async () => {
       const result = await setCandidateDecisionAction(candidateId, target);
       if (!result.ok) {
@@ -502,8 +516,15 @@ export function CandidateDetailSheet({
           ? "Added to the shortlist"
           : target === "REJECTED"
             ? "Marked as rejected"
-            : "Decision cleared",
+            : target === "UNDECIDED"
+              ? "Decision cleared"
+              : `Moved to ${DECISION_LABELS[target].toLowerCase()}`,
       );
+      // Only an OPEN post can be closed, so a hire on a post that is already
+      // closed has nothing to ask.
+      if (target === "HIRED" && jobPost.status === "OPEN") {
+        setAskClosePosition(true);
+      }
     });
   }
 
@@ -536,6 +557,15 @@ export function CandidateDetailSheet({
   const data = candidate?.extracted ?? null;
   const isRunning =
     candidate?.status === "PROCESSING" || candidate?.status === "NEW";
+  // Mirrors what `setCandidateDecisionAction` will accept: nothing to decide on
+  // until the resume has been read.
+  const canSetStage = canDecide && candidate?.status !== "ERROR" && !isRunning;
+  // Past the shortlist, "Shortlist" would be a demotion dressed as a positive
+  // action, so the footer button steps aside and the stage picker takes over.
+  const pastShortlist =
+    candidate?.status === "INTERVIEW" ||
+    candidate?.status === "OFFER" ||
+    candidate?.status === "HIRED";
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -726,6 +756,23 @@ export function CandidateDetailSheet({
                   ) : null}
                 </section>
               )}
+
+              {canSetStage ? (
+                <section>
+                  <SectionHeading icon={Workflow} tone="text-brand">
+                    Hiring stage
+                  </SectionHeading>
+                  <div className="mt-2">
+                    <CandidateStageSelect
+                      status={candidate.status}
+                      disabled={deciding}
+                      onChange={(next) => setStage(candidate.id, next)}
+                    />
+                  </div>
+                </section>
+              ) : null}
+
+              <CandidateNotes key={candidate.id} candidateId={candidate.id} />
             </div>
 
             <SheetFooter className="flex-row gap-2">
@@ -777,32 +824,43 @@ export function CandidateDetailSheet({
                     )}
                     {candidate.status === "REJECTED" ? "Rejected" : "Reject"}
                   </Button>
-                  <Button
-                    className="flex-1"
-                    disabled={deciding}
-                    onClick={() => decide(candidate.id, "SHORTLISTED")}
-                  >
-                    {showDeciding ? (
-                      <Loader2 className="size-4 animate-spin" />
-                    ) : (
-                      <Star
-                        className={cn(
-                          "size-4",
-                          // Filled once shortlisted, so the button reads as a
-                          // state rather than only as a thing to press.
-                          candidate.status === "SHORTLISTED"
-                            ? "fill-amber-300 text-amber-300"
-                            : "text-amber-300",
-                        )}
-                      />
-                    )}
-                    {candidate.status === "SHORTLISTED"
-                      ? "Shortlisted"
-                      : "Shortlist"}
-                  </Button>
+                  {pastShortlist ? null : (
+                    <Button
+                      className="flex-1"
+                      disabled={deciding}
+                      onClick={() => decide(candidate.id, "SHORTLISTED")}
+                    >
+                      {showDeciding ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <Star
+                          className={cn(
+                            "size-4",
+                            // Filled once shortlisted, so the button reads as a
+                            // state rather than only as a thing to press.
+                            candidate.status === "SHORTLISTED"
+                              ? "fill-amber-300 text-amber-300"
+                              : "text-amber-300",
+                          )}
+                        />
+                      )}
+                      {candidate.status === "SHORTLISTED"
+                        ? "Shortlisted"
+                        : "Shortlist"}
+                    </Button>
+                  )}
                 </>
               ) : null}
             </SheetFooter>
+
+            {/* Inside the sheet's content on purpose: a dialog rendered beside
+                the sheet counts as "outside" it, and the first click on the
+                dialog would dismiss the sheet underneath. */}
+            <ClosePositionDialog
+              jobPostId={jobPost.id}
+              open={askClosePosition}
+              onOpenChange={setAskClosePosition}
+            />
           </>
         ) : null}
       </SheetContent>
