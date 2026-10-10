@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
+import { Instrument_Serif, Inter, JetBrains_Mono } from "next/font/google";
 
 import { ClerkProvider } from "@clerk/nextjs";
 import { NextIntlClientProvider } from "next-intl";
@@ -19,6 +19,18 @@ const inter = Inter({
 const jetbrainsMono = JetBrains_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+  display: "swap",
+});
+
+/**
+ * Display serif for the marketing pages' italic accents only. One weight, one
+ * style — it never sets body text, so nothing else is downloaded.
+ */
+const instrumentSerif = Instrument_Serif({
+  variable: "--font-instrument-serif",
+  subsets: ["latin"],
+  weight: "400",
+  style: "italic",
   display: "swap",
 });
 
@@ -67,7 +79,7 @@ export default async function RootLayout({
     >
       <html lang={locale} suppressHydrationWarning>
         <body
-          className={`${inter.variable} ${jetbrainsMono.variable} min-h-svh antialiased`}
+          className={`${inter.variable} ${jetbrainsMono.variable} ${instrumentSerif.variable} min-h-svh antialiased`}
         >
           <NextIntlClientProvider>
             <TooltipProvider delayDuration={200}>{children}</TooltipProvider>

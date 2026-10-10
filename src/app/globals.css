@@ -9,6 +9,7 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-sans);
   --font-mono: var(--font-geist-mono);
+  --font-serif: var(--font-instrument-serif), ui-serif, Georgia, serif;
   --font-heading: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -162,5 +163,34 @@
   }
   html {
     @apply font-sans;
+  }
+}
+
+/*
+ * Marketing backdrops. Plain CSS rather than arbitrary Tailwind values because
+ * each is two gradients plus a mask, which is unreadable as a class name.
+ */
+@layer components {
+  /* Faint graph-paper grid, fading out towards the bottom-left so it sits
+     behind the hero illustration without competing with the headline. */
+  .marketing-grid {
+    background-image:
+      linear-gradient(to right, var(--border) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--border) 1px, transparent 1px);
+    background-size: 4rem 4rem;
+    mask-image: radial-gradient(ellipse 70% 80% at 75% 30%, #000, transparent);
+    opacity: 0.6;
+  }
+
+  /* Dot texture for the closing call-to-action panel. */
+  .marketing-dots {
+    background-image: radial-gradient(
+      circle,
+      currentColor 1px,
+      transparent 1.5px
+    );
+    background-size: 1.5rem 1.5rem;
+    mask-image: radial-gradient(ellipse 60% 70% at 50% 50%, #000, transparent);
+    opacity: 0.12;
   }
 }

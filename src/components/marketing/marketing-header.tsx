@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { StafflyLogo } from "@/components/staffly-logo";
-import { Button } from "@/components/ui/button";
+import { PillLink } from "@/components/marketing/pill-link";
 
 /**
  * Header for the pages a signed-out visitor can reach.
@@ -17,19 +17,25 @@ import { Button } from "@/components/ui/button";
 export function MarketingHeader() {
   return (
     <header className="sticky top-0 z-20 border-b border-border bg-background/80 backdrop-blur-sm">
-      <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4 sm:px-6">
+      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
         <StafflyLogo href="/" />
-        <div className="flex items-center gap-1 sm:gap-2">
-          <Button asChild variant="ghost" size="sm">
-            <Link href="/pricing">Pricing</Link>
-          </Button>
-          <Button asChild variant="ghost" size="sm">
-            <Link href="/dashboard">Sign in</Link>
-          </Button>
-          <Button asChild size="sm">
-            <Link href="/sign-up">Get started</Link>
-          </Button>
-        </div>
+        <nav className="flex items-center gap-4 text-sm sm:gap-7">
+          <Link
+            href="/pricing"
+            className="text-muted-foreground transition-colors hover:text-foreground"
+          >
+            Pricing
+          </Link>
+          <Link
+            href="/dashboard"
+            className="text-muted-foreground transition-colors hover:text-foreground"
+          >
+            Sign in
+          </Link>
+          <PillLink href="/sign-up" tone="dark" size="sm">
+            Get started
+          </PillLink>
+        </nav>
       </div>
     </header>
   );
