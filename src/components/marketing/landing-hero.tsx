@@ -69,7 +69,7 @@ export function LandingHero() {
     <section className="relative overflow-hidden">
       <div aria-hidden className="marketing-grid absolute inset-0 -z-10" />
 
-      <div className="mx-auto grid max-w-6xl items-center gap-16 px-4 pt-16 pb-28 sm:px-6 lg:grid-cols-[1.1fr_1fr] lg:gap-12 lg:pt-24 lg:pb-36">
+      <div className="mx-auto grid max-w-6xl items-center gap-16 px-4 py-16 sm:px-6 lg:grid-cols-[1.1fr_1fr] lg:gap-12 lg:py-24">
         <div>
           {/* The trial is the offer, so it leads. */}
           <p className="inline-flex items-center gap-2 rounded-full border border-brand/20 bg-card py-1 pr-3 pl-1 text-sm text-brand">
@@ -88,8 +88,8 @@ export function LandingHero() {
 
           <p className="mt-8 max-w-xl text-lg leading-relaxed text-pretty text-muted-foreground">
             Staffly ATS+ ingests applications from your inbox, extracts what
-            matters from each resume, and scores candidates against the
-            criteria you set — with a rationale you can defend.
+            matters from each resume, and scores candidates against the criteria
+            you set — with a rationale you can defend.
           </p>
 
           <div className="mt-9 flex flex-wrap items-center gap-3">
@@ -118,9 +118,11 @@ export function LandingHero() {
           <div className="rounded-3xl border border-border bg-card shadow-2xl shadow-brand/10">
             <div className="flex items-center justify-between gap-4 border-b border-border px-6 py-5">
               <div className="min-w-0">
-                <p className="truncate font-semibold">Senior Backend Engineer</p>
+                <p className="truncate font-semibold">
+                  Senior Backend Engineer
+                </p>
                 <p className="truncate text-sm text-muted-foreground">
-                  10 applicants · {above.length} above threshold shown
+                  10 applicants · {above.length} above threshold
                 </p>
               </div>
               <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-success/10 px-2.5 py-1 text-xs font-medium text-success">
@@ -152,9 +154,9 @@ export function LandingHero() {
             </div>
           </div>
 
-          {/* The rationale, overlapping the list: the score is never shown
+          {/* The rationale, tucked under the list: the score is never shown
               without the reason for it, which is the product's whole claim. */}
-          <div className="absolute right-4 -bottom-16 w-72 rounded-2xl bg-slate-950 p-5 text-white shadow-2xl sm:right-6 sm:w-80">
+          <div className="mt-4 mr-4 ml-auto max-w-80 rounded-2xl bg-slate-950 p-5 text-white shadow-2xl sm:mr-6">
             <p className="font-mono text-[11px] tracking-widest text-indigo-300">
               WHY {SAMPLE_CANDIDATES[0].score}
             </p>

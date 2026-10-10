@@ -10,8 +10,12 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 
 import "./globals.css";
 
+// Named for the face, not `--font-sans`: the Tailwind theme defines
+// `--font-sans` in terms of this, and giving both the same name made the theme
+// variable refer to itself, which is invalid — every page silently fell back
+// to the browser's default serif.
 const inter = Inter({
-  variable: "--font-sans",
+  variable: "--font-inter",
   subsets: ["latin"],
   display: "swap",
 });
@@ -77,10 +81,15 @@ export default async function RootLayout({
         },
       }}
     >
-      <html lang={locale} suppressHydrationWarning>
-        <body
-          className={`${inter.variable} ${jetbrainsMono.variable} ${instrumentSerif.variable} min-h-svh antialiased`}
-        >
+      {/* The font variables sit on <html>, not <body>: the base stylesheet
+          sets `font-family` on html itself, and a variable declared on a child
+          is not visible there. */}
+      <html
+        lang={locale}
+        suppressHydrationWarning
+        className={`${inter.variable} ${jetbrainsMono.variable} ${instrumentSerif.variable}`}
+      >
+        <body className="min-h-svh antialiased">
           <NextIntlClientProvider>
             <TooltipProvider delayDuration={200}>{children}</TooltipProvider>
             <Toaster position="bottom-right" />
