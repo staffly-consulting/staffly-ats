@@ -55,7 +55,7 @@ export function LandingScoring() {
     <section className="bg-slate-950 text-white">
       <div className="mx-auto grid max-w-6xl items-center gap-14 px-4 py-20 sm:px-6 lg:grid-cols-2 lg:py-28">
         <div>
-          <p className="font-mono text-xs tracking-[0.2em] text-indigo-300 uppercase">
+          <p className="font-mono text-xs tracking-[0.2em] text-blue-300 uppercase">
             The rationale
           </p>
           <h2 className="mt-4 text-4xl leading-[1.05] font-semibold tracking-tighter text-balance sm:text-5xl">
@@ -72,7 +72,7 @@ export function LandingScoring() {
           <ul className="mt-8 space-y-3 text-slate-300">
             {POINTS.map((point) => (
               <li key={point} className="flex gap-3">
-                <Check className="mt-1 size-4 shrink-0 text-indigo-300" />
+                <Check className="mt-1 size-4 shrink-0 text-blue-300" />
                 <span>{point}</span>
               </li>
             ))}

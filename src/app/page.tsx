@@ -28,10 +28,10 @@ export default function LandingPage() {
         {/* Closing call to action                                           */}
         {/* ---------------------------------------------------------------- */}
         <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:py-24">
-          {/* Always white on indigo, in both colour schemes: `text-white`
-              rather than `text-brand-foreground`, which is dark in dark mode
-              and would not match the fixed-white buttons below. */}
-          <div className="relative overflow-hidden rounded-[2.5rem] bg-indigo-600 px-6 py-20 text-center text-white sm:py-28">
+          {/* Always white on the logo blue, in both colour schemes: hence
+              `brand-deep` and `text-white` rather than `brand` and
+              `brand-foreground`, which both change in dark mode. */}
+          <div className="relative overflow-hidden rounded-[2.5rem] bg-brand-deep px-6 py-20 text-center text-white sm:py-28">
             <div aria-hidden className="marketing-dots absolute inset-0" />
 
             <div className="relative mx-auto max-w-3xl">
@@ -41,7 +41,7 @@ export default function LandingPage() {
                   arrival
                 </span>
               </h2>
-              <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-pretty text-indigo-100">
+              <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-pretty text-blue-100">
                 Try it free for {TRIAL_PERIOD_DAYS} days. Plans start at $79 a
                 month, priced by applications rather than by seat — so the whole
                 hiring team can use it.

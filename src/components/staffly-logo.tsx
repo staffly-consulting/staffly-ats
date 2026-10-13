@@ -1,10 +1,15 @@
+import Image from "next/image";
 import Link from "next/link";
 
 import { cn } from "@/lib/utils";
 
 /**
- * Wordmark for Staffly ATS+. The mark is plain text in a tile, so it inherits
- * colour from Tailwind classes instead of shipping an asset.
+ * Wordmark for Staffly ATS+.
+ *
+ * The mark is `public/logo-mark.png`: `public/logo.png` trimmed of its padding
+ * and resized, so the artwork fills its box at icon size. Regenerate it from
+ * `logo.png` if the logo changes. The brand colour in `globals.css` is sampled
+ * from the same file.
  */
 export function StafflyLogo({
   href = "/dashboard",
@@ -20,12 +25,14 @@ export function StafflyLogo({
         className,
       )}
     >
-      <span
-        aria-hidden="true"
-        className="flex size-7 items-center justify-center rounded-lg bg-brand text-sm leading-none font-bold text-brand-foreground shadow-sm"
-      >
-        S.
-      </span>
+      {/* Decorative: the wordmark beside it already names the product. */}
+      <Image
+        src="/logo-mark.png"
+        alt=""
+        width={28}
+        height={28}
+        className="size-7 shrink-0"
+      />
       <span className="text-[15px]">
         Staffly<span className="text-brand"> ATS+</span>
       </span>

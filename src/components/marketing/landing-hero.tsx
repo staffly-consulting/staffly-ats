@@ -157,7 +157,7 @@ export function LandingHero() {
           {/* The rationale, tucked under the list: the score is never shown
               without the reason for it, which is the product's whole claim. */}
           <div className="mt-4 mr-4 ml-auto max-w-80 rounded-2xl bg-slate-950 p-5 text-white shadow-2xl sm:mr-6">
-            <p className="font-mono text-[11px] tracking-widest text-indigo-300">
+            <p className="font-mono text-[11px] tracking-widest text-blue-300">
               WHY {SAMPLE_CANDIDATES[0].score}
             </p>
             <p className="mt-2 text-sm">
