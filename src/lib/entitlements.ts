@@ -3,6 +3,7 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import {
   hasFeature,
+  jobPostOpeningDecision,
   ingestionAllowance,
   needsFirstSubscription,
   quotaSnapshot,
@@ -11,6 +12,7 @@ import {
   type BillableOrg,
   type Feature,
   type IngestionAllowance,
+  type JobPostOpening,
   type QuotaSnapshot,
 } from "@/lib/plans";
 import type { BillingInterval, PlanTier } from "@prisma/client";
@@ -100,6 +102,48 @@ export async function checkSubscription(
     active: false,
     reason: needsFirstSubscription(org) ? "never-subscribed" : "lapsed",
   };
+}
+
+/**
+ * Whether the org may make one more job post OPEN — by creating it open,
+ * publishing a draft, or reopening a closed post.
+ *
+ * Pass `jobPostId` when an existing post is changing status: a post that is
+ * already open is not a new opening, so editing it is always allowed, even for
+ * an org that is over its limit after a downgrade.
+ *
+ * Not atomic with the write that follows — two simultaneous opens can overshoot
+ * by one. That costs at most one extra open post, which is not worth a
+ * serializable transaction on every save.
+ */
+export async function checkCanOpenJobPost(
+  orgId: string,
+  jobPostId?: string,
+): Promise<JobPostOpening> {
+  const [org, current] = await Promise.all([
+    prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { planTier: true },
+    }),
+    jobPostId
+      ? prisma.jobPost.findFirst({
+          where: { id: jobPostId, orgId },
+          select: { status: true },
+        })
+      : null,
+  ]);
+
+  if (!org) return { allowed: false, error: "Organization not found." };
+
+  const openCount = await prisma.jobPost.count({
+    where: { orgId, status: "OPEN" },
+  });
+
+  return jobPostOpeningDecision({
+    tier: org.planTier,
+    currentStatus: current?.status ?? null,
+    openCount,
+  });
 }
 
 /** Fetching variant of `ingestionAllowance`, for the ingestion pipeline. */

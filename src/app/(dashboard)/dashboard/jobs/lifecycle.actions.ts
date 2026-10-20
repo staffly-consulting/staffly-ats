@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { permissionError, requireOrgContext } from "@/lib/auth";
+import { checkCanOpenJobPost } from "@/lib/entitlements";
 import { setJobPostLifecycle, type LifecycleAction } from "@/lib/job-posts";
 import { PERMISSIONS } from "@/lib/permissions";
 import type { JobPostStatus } from "@prisma/client";
@@ -45,6 +46,13 @@ export async function setJobPostLifecycleAction(
 
   const action = parseAction(actionInput);
   if (!action) return { ok: false, error: "Unknown action." };
+
+  // Reopening is the one transition that makes a post OPEN, so it is the one
+  // that answers to the plan's limit. Restore never lands on OPEN.
+  if (action === "reopen") {
+    const slot = await checkCanOpenJobPost(context.orgId, jobPostId);
+    if (!slot.allowed) return { ok: false, error: slot.error };
+  }
 
   try {
     const result = await setJobPostLifecycle(context.orgId, jobPostId, action);

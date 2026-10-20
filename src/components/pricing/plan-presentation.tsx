@@ -92,9 +92,11 @@ export function PlanFacts({
   const jobPosts =
     plan.jobPostLimit === null
       ? "Unlimited job posts"
-      : `${plan.jobPostLimit} job ${pluralize(plan.jobPostLimit, "post")}`;
+      : `${plan.jobPostLimit} open job ${pluralize(plan.jobPostLimit, "post")}`;
 
-  const inboxes = `${plan.inboxLimit} connected ${pluralize(plan.inboxLimit, "inbox", "inboxes")}`;
+  // The same on every plan: one forwarding address receives every application,
+  // which is then assigned to a job post, so a second inbox would add nothing.
+  const inboxes = "Forwarding inbox address";
 
   // Not read from PLANS, because there is no seat field to read: seats are
   // unlimited on every tier by design, not by a limit that happens to be high.

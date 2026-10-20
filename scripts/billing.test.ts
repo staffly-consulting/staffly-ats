@@ -79,12 +79,7 @@ check(
     PLANS.PIPELINE.jobPostLimit === 15 &&
     PLANS.TALENT_POOL.jobPostLimit === null,
 );
-check(
-  "inbox limits 1 / 2 / 5",
-  PLANS.SHORTLIST.inboxLimit === 1 &&
-    PLANS.PIPELINE.inboxLimit === 2 &&
-    PLANS.TALENT_POOL.inboxLimit === 5,
-);
+
 check("Enterprise is not self-serve", PLANS.ENTERPRISE.selfServe === false);
 check(
   "only three tiers are self-serve",
@@ -430,7 +425,9 @@ console.log("\n--- monthly anchor advance (no drift, month-length safe) ---");
   );
 }
 
-console.log("\n--- ingestion allowance (every application is a model call) ---");
+console.log(
+  "\n--- ingestion allowance (every application is a model call) ---",
+);
 {
   const withUsage = (
     tier: PlanTier,

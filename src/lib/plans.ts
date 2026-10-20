@@ -1,4 +1,4 @@
-import type { BillingInterval, PlanTier } from "@prisma/client";
+import type { BillingInterval, JobPostStatus, PlanTier } from "@prisma/client";
 
 /**
  * The pricing table, in code.
@@ -24,9 +24,11 @@ export interface PlanDefinition {
   includedApplications: number;
   /** USD per application beyond the included monthly pool. Display only. */
   overagePerApplication: number;
-  /** null = unlimited. */
+  /**
+   * OPEN job posts at any one time; null = unlimited. Drafts, closed and
+   * archived posts never count — see `canOpenJobPost`.
+   */
   jobPostLimit: number | null;
-  inboxLimit: number;
   /** Self-serve via Checkout, or sales-led. */
   selfServe: boolean;
 }
@@ -40,7 +42,6 @@ export const PLANS: Record<PlanTier, PlanDefinition> = {
     includedApplications: 150,
     overagePerApplication: 0.7,
     jobPostLimit: 3,
-    inboxLimit: 1,
     selfServe: true,
   },
   PIPELINE: {
@@ -51,7 +52,6 @@ export const PLANS: Record<PlanTier, PlanDefinition> = {
     includedApplications: 900,
     overagePerApplication: 0.5,
     jobPostLimit: 15,
-    inboxLimit: 2,
     selfServe: true,
   },
   TALENT_POOL: {
@@ -62,7 +62,6 @@ export const PLANS: Record<PlanTier, PlanDefinition> = {
     includedApplications: 2_500,
     overagePerApplication: 0.35,
     jobPostLimit: null,
-    inboxLimit: 5,
     selfServe: true,
   },
   ENTERPRISE: {
@@ -76,7 +75,6 @@ export const PLANS: Record<PlanTier, PlanDefinition> = {
     includedApplications: Number.MAX_SAFE_INTEGER,
     overagePerApplication: 0,
     jobPostLimit: null,
-    inboxLimit: 100,
     selfServe: false,
   },
 };
@@ -239,6 +237,69 @@ export function isTrialEligible(org: {
   return (
     org.stripeSubscriptionId === null && org.stripeSubscriptionStatus === null
   );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Job post limit                                                              */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Whether an org on this tier may have one more OPEN job post.
+ *
+ * Counts open posts only. The limit is on how many searches run at once, which
+ * is what drives application volume and therefore cost; drafts cost nothing,
+ * and counting closed or archived posts would punish a customer for finishing
+ * a search or for keeping its history.
+ *
+ * An org already over the limit — after a downgrade — keeps every post it has
+ * open. It just cannot open another until it is back under.
+ */
+export function canOpenJobPost(tier: PlanTier, openCount: number): boolean {
+  const limit = PLANS[tier].jobPostLimit;
+  return limit === null || openCount < limit;
+}
+
+export type JobPostOpening =
+  { allowed: true } | { allowed: false; error: string };
+
+/**
+ * The whole rule for making a post OPEN, as one pure decision so it can be
+ * tested without a database. `checkCanOpenJobPost` only fetches the inputs.
+ *
+ * `currentStatus` is the post's status before the change, or null for a post
+ * being created. `openCount` is every OPEN post in the org right now.
+ */
+export function jobPostOpeningDecision(input: {
+  tier: PlanTier;
+  currentStatus: JobPostStatus | null;
+  openCount: number;
+}): JobPostOpening {
+  // Already open: saving it again is an edit, not a new opening — even for an
+  // org over its limit after a downgrade.
+  if (input.currentStatus === "OPEN") return { allowed: true };
+
+  return canOpenJobPost(input.tier, input.openCount)
+    ? { allowed: true }
+    : { allowed: false, error: jobPostLimitMessage(input.tier) };
+}
+
+/** The refusal, naming the way out: close one, or the plan that fits more. */
+export function jobPostLimitMessage(tier: PlanTier): string {
+  const plan = PLANS[tier];
+  const limit = plan.jobPostLimit ?? 0;
+  const next = PLAN_ORDER.slice(planRank(tier) + 1)
+    .map((t) => PLANS[t])
+    .find((p) => p.selfServe && (p.jobPostLimit ?? Infinity) > limit);
+
+  const upgrade = next
+    ? ` or upgrade to ${next.label} for ${
+        next.jobPostLimit === null ? "unlimited" : next.jobPostLimit
+      } in Settings`
+    : "";
+
+  return `Your ${plan.label} plan allows ${limit} open job ${
+    limit === 1 ? "post" : "posts"
+  } at a time. Close one${upgrade}. Drafts do not count towards the limit.`;
 }
 
 /**

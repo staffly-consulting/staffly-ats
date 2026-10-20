@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 
 import { checkPermission, getOrgContext } from "@/lib/auth";
-import { checkFeature } from "@/lib/entitlements";
+import { checkCanOpenJobPost, checkFeature } from "@/lib/entitlements";
 import { PERMISSIONS } from "@/lib/permissions";
 import { FEATURES } from "@/lib/plans";
 import { updateJobPost } from "@/lib/job-posts";
@@ -95,6 +95,19 @@ export async function PATCH(
       },
       { status: 403 },
     );
+  }
+
+  // Publishing a draft (or saving a closed post as open) is a new opening, so
+  // it counts against the plan's limit. Editing a post that is already open is
+  // not, which `checkCanOpenJobPost` works out from the id.
+  if (parsed.data.status === "OPEN") {
+    const slot = await checkCanOpenJobPost(orgId, id);
+    if (!slot.allowed) {
+      return NextResponse.json(
+        { error: slot.error, upgradeUrl: "/dashboard/settings" },
+        { status: 403 },
+      );
+    }
   }
 
   try {

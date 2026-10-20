@@ -161,8 +161,7 @@ async function main() {
 
     plan          ${updated.planTier}  (${plan.label})
     applications  unlimited — never registers overage
-    job posts     ${plan.jobPostLimit ?? "unlimited"}
-    inboxes       ${plan.inboxLimit}
+    job posts     ${plan.jobPostLimit ?? "unlimited"} open at a time
     features      every gated feature unlocked
     billing       none — no Stripe subscription attached
     pool anchor   ${updated.poolCycleAnchor?.toISOString() ?? "none"}

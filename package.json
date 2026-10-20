@@ -21,6 +21,7 @@
     "test:extraction": "tsx --conditions=react-server scripts/extraction.test.ts",
     "test:scoring": "tsx scripts/scoring.test.ts",
     "test:billing": "tsx scripts/billing.test.ts",
+    "test:job-post-limit": "tsx scripts/job-post-limit.test.ts",
     "seed:internal": "tsx scripts/seed-internal-org.ts",
     "verify:stripe": "tsx --conditions=react-server scripts/verify-stripe.ts",
     "stripe:promo-codes": "tsx scripts/create-promo-codes.ts",

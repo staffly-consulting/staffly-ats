@@ -2,7 +2,11 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 
 import { checkPermission, getCurrentMember, getOrgContext } from "@/lib/auth";
-import { checkFeature, checkSubscription } from "@/lib/entitlements";
+import {
+  checkCanOpenJobPost,
+  checkFeature,
+  checkSubscription,
+} from "@/lib/entitlements";
 import { PERMISSIONS } from "@/lib/permissions";
 import { FEATURES, TRIAL_PERIOD_DAYS } from "@/lib/plans";
 import { createJobPost } from "@/lib/job-posts";
@@ -113,6 +117,18 @@ export async function POST(request: Request) {
       },
       { status: 403 },
     );
+  }
+
+  // The plan's job post limit, which counts OPEN posts only — so a draft can
+  // always be saved, and is checked again when it is published.
+  if (parsed.data.status === "OPEN") {
+    const slot = await checkCanOpenJobPost(orgId);
+    if (!slot.allowed) {
+      return NextResponse.json(
+        { error: slot.error, upgradeUrl: "/dashboard/settings" },
+        { status: 403 },
+      );
+    }
   }
 
   // Attribution is best-effort. `ensureTenantProvisioned` will have created the
