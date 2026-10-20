@@ -23,6 +23,7 @@
     "test:billing": "tsx scripts/billing.test.ts",
     "seed:internal": "tsx scripts/seed-internal-org.ts",
     "verify:stripe": "tsx --conditions=react-server scripts/verify-stripe.ts",
+    "stripe:promo-codes": "tsx scripts/create-promo-codes.ts",
     "email:realias": "tsx scripts/realias-inboxes.ts",
     "test:i18n": "tsx scripts/i18n.test.ts",
     "test:permissions": "tsx scripts/permissions.test.ts",

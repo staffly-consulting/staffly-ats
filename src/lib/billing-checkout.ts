@@ -179,6 +179,11 @@ export async function createCheckoutSession(
     // Lets Stripe collect the tax fields a Thai entity needs for VAT-registered
     // buyers. Harmless when Stripe Tax is off.
     billing_address_collection: "auto",
+    // The promo code box, for the free-month codes made by
+    // `scripts/create-promo-codes.ts`. Monthly only: those coupons are "100% off
+    // for N months", and on an annual plan the single yearly invoice falls
+    // inside that window — a one-month code would give away the whole year.
+    ...(input.interval === "MONTHLY" ? { allow_promotion_codes: true } : {}),
   });
 
   if (!session.url) {
